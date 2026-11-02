@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement or supported data source.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What should it help users do?
+      description: Include why existing options are insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Suggested approach (optional)
+      description: For a new provider, link to its official API documentation and rules.
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Scope
+      options:
+        - label: This feature can work without bypassing an external site's access controls or rules.
+          required: true

@@ -1,5 +1,7 @@
 import importlib.util
 import os
+import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -178,6 +180,66 @@ class HubTests(unittest.TestCase):
     def test_demo_poll_is_disabled(self):
         with patch.object(hub, "get_meta", return_value="1"):
             self.assertTrue(hub.poll_all()["demo"])
+
+
+    def test_asf_snapshot_counts_only(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            path = Path(dirname) / "freepackages.json"
+            path.write_text(json.dumps({
+                "SeenPackages": [123, 456, 789],
+                "NewOwnedPackages": [654],
+                "BackingAccessToken": "a-test-secret-that-must-not-be-exposed",
+            }))
+            with patch.dict(os.environ, {"ASF_PACKAGES_DB": str(path)}):
+                report = hub.asf_summary()
+            self.assertEqual(report, {
+                "connected": True, "seen_packages": 3, "new_owned_queue": 1,
+            })
+            self.assertNotIn("a-test-secret", str(report))
+
+    def test_asf_invalid_snapshot_has_safe_error(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            path = Path(dirname) / "invalid.json"
+            path.write_text('{"BackingAccessToken":"secret"}')
+            with patch.dict(os.environ, {"ASF_PACKAGES_DB": str(path)}):
+                self.assertEqual(hub.asf_summary()["error"], "ASF snapshot unavailable")
+
+    def test_win_notification_baseline_new_wins_retry_and_dedup(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            path = Path(dirname) / "wins snapshot.db"
+            conn = sqlite3.connect(path)
+            conn.executescript(
+                "CREATE TABLE giveaways (code TEXT, game_name TEXT, is_won INTEGER, won_at TEXT);"
+                "INSERT INTO giveaways VALUES('abc12','Old Game',1,'2026-10-30');"
+                "CREATE TABLE entries (status TEXT);"
+                "INSERT INTO entries VALUES('success');"
+            )
+            conn.commit()
+            with patch.dict(os.environ, {"STEAMGIFTS_DB": str(path)}), \
+                 patch.object(hub, "NOTIFY_NEW_WINS", True), \
+                 patch.object(hub, "TELEGRAM_BOT_TOKEN", "demo-token"), \
+                 patch.object(hub, "TELEGRAM_CHAT_ID", "example"), \
+                 patch.object(hub, "_send_telegram") as send:
+                with hub.db() as internal:
+                    internal.execute("DELETE FROM win_notifications")
+                    internal.execute("DELETE FROM meta WHERE key='win_notifications_initialized'")
+                self.assertTrue(hub.notify_new_wins()["baseline"])
+                send.assert_not_called()
+                conn.execute(
+                    "INSERT INTO giveaways VALUES('xyz87','Test & Win',1,'2026-11-02')"
+                )
+                conn.commit()
+                self.assertEqual(len(hub.steamgifts_wins()), 2)
+                send.side_effect = RuntimeError("Telegram network error")
+                self.assertEqual(hub.notify_new_wins()["sent"], 0)
+                send.side_effect = None
+                self.assertEqual(hub.notify_new_wins()["sent"], 1)
+                self.assertIn("Test &amp; Win", send.call_args.args[0])
+                self.assertEqual(hub.notify_new_wins()["sent"], 0)
+            conn.close()
+
+    def test_rewards_page_without_config(self):
+        self.assertIn("Reward tracking", hub.render_page("/rewards", {}))
 
 
 if __name__ == "__main__":

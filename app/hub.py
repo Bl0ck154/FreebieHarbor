@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -29,6 +30,7 @@ ALIENWARE_FORUM_URL = "https://www.alienwarearena.com/forums/board/438/contest-a
 INDIEGALA_WORKER = os.environ.get("INDIEGALA_WORKER", "").rstrip("/")
 EXTERNAL_USER_AGENT = "FreebieHarbor/0.1 (self-hosted)"
 NOTIFY_NEW_OFFERS = os.environ.get("NOTIFY_NEW_OFFERS", "false").lower() in {"true", "1", "yes"}
+NOTIFY_NEW_WINS = os.environ.get("NOTIFY_NEW_WINS", "false").lower() in {"true", "1", "yes"}
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 ALLOWED_HOSTS = {
@@ -51,7 +53,6 @@ POLICY = {sub: "Check community rules before participating." for sub in SUBREDDI
 os.makedirs(DATA_DIR, exist_ok=True)
 _db_lock = threading.Lock()
 _poll_lock = threading.Lock()
-_draft_lock = threading.Lock()
 
 
 def now_iso():
@@ -120,6 +121,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS external_offers_source_seen ON external_offers(source, last_seen DESC);
         CREATE TABLE IF NOT EXISTS offer_notifications (
           offer_id TEXT PRIMARY KEY,
+          seen_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS win_notifications (
+          giveaway_code TEXT PRIMARY KEY,
           seen_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -906,6 +911,10 @@ def poll_all(force_preflight=False):
             prune_old_reddit_posts()
         except sqlite3.Error:
             set_meta("reddit_prune_error", "SQLite maintenance error")
+        try:
+            notify_new_wins()
+        except Exception:
+            set_meta("win_notification_error", "Unexpected win notifier error")
         external_counts = poll_external_sources()
         # Only initialize the alert baseline when a source actually responded.
         # A total network outage must not turn recovered historical offers into alerts.
@@ -965,40 +974,6 @@ def requirement_html(row):
     return '<div class="task"><b>Read the post and follow its entry instructions</b></div>'
 
 
-def eligibility_cards():
-    out = []
-    with _db_lock, db() as c:
-        rows = c.execute("SELECT * FROM eligibility ORDER BY subreddit").fetchall()
-    by = {r["subreddit"]: r for r in rows}
-    for sub in SUBREDDITS:
-        r = by.get(sub)
-        raw_status = (r["status"] if r else "unknown").lower()
-        status = "history-ok" if sub in HISTORY_VERIFIED else raw_status
-        blockers = []
-        profile = {}
-        if r:
-            try: blockers = json.loads(r["blockers_json"] or "[]")
-            except Exception: pass
-            try: profile = json.loads(r["profile_json"] or "{}")
-            except Exception: pass
-        reason = ""
-        if sub in HISTORY_VERIFIED:
-            reason = f"Publisher history: {HISTORY_VERIFIED[sub]} successful publication(s) from this account."
-        elif blockers:
-            parts=[]
-            for b in blockers[:3]:
-                kind=str(b.get("kind") or "requirement").replace("_"," ")
-                minimum=b.get("minimum")
-                actual=b.get("actual")
-                parts.append(f"{kind}: {actual} / {minimum}")
-            reason=" · ".join(parts)
-        elif status != "blocked":
-            reason="Account threshold check passed or no hard threshold detected."
-        karma=""
-        if profile:
-            karma=f' · post {profile.get("post_karma","?")} · comment {profile.get("comment_karma","?")}'
-        out.append(f'''<div class="elig {html.escape(status)}"><b>r/{html.escape(sub)}</b><span>{html.escape(status.upper())}{html.escape(karma)}</span><small>{html.escape(reason)}</small><small>{html.escape(POLICY[sub])}</small></div>''')
-    return "".join(out)
 
 
 def _page_number(query, key="page", default=1):
@@ -1310,8 +1285,6 @@ UI_JS = r'''
 (function(){if(localStorage.getItem('freebieharbor-theme')==='dark'){document.documentElement.classList.add('dark')}})();
 function toggleTheme(){var root=document.documentElement;root.classList.toggle('dark');localStorage.setItem('freebieharbor-theme',root.classList.contains('dark')?'dark':'light');var a=document.getElementById('theme-sun'),b=document.getElementById('theme-moon');if(a&&b){a.style.display=root.classList.contains('dark')?'block':'none';b.style.display=root.classList.contains('dark')?'none':'block'}}
 function initThemeIcon(){var d=document.documentElement.classList.contains('dark'),a=document.getElementById('theme-sun'),b=document.getElementById('theme-moon');if(a&&b){a.style.display=d?'block':'none';b.style.display=d?'none':'block'}}
-function copyReply(btn){const code=btn.parentElement.querySelector('code');if(!code)return;navigator.clipboard.writeText(code.innerText).then(()=>{const old=btn.innerText;btn.innerText='Copied';setTimeout(()=>btn.innerText=old,1100);});}
-function copyAndOpen(btn,url){const card=btn.closest('.card');const code=card?card.querySelector('.reply code'):null;const go=()=>window.open(url,'_blank');if(code&&navigator.clipboard)navigator.clipboard.writeText(code.innerText).then(go).catch(go);else go();}
 window.addEventListener('DOMContentLoaded',initThemeIcon);
 '''
 
@@ -1322,7 +1295,7 @@ def render_shell(active, content, status=None, title="FreebieHarbor"):
     username = str(status.get("username") or "").strip()
     session_title = "FreebieHarbor local dashboard"
     session_icon = svg_icon("activity", 16, "status-green")
-    nav = [("dashboard", "/dashboard", "Dashboard", "dashboard"),("offers", "/offers", "Free games", "gift"),("reddit", "/reddit", "Reddit", "message"),("indiegala", "/indiegala", "IndieGala info", "coins")]
+    nav = [("dashboard", "/dashboard", "Dashboard", "dashboard"),("offers", "/offers", "Free games", "gift"),("reddit", "/reddit", "Reddit", "message"),("rewards", "/rewards", "Rewards", "gift"),("indiegala", "/indiegala", "IndieGala info", "coins")]
     nav_html = "".join(f'<a class="nav-link{" active" if active==key else ""}" href="{href}">{svg_icon(icon)}<span>{label}</span></a>' for key, href, label, icon in nav)
     nav_html += '<div class="nav-divider"></div>'
     nav_html += f'<a class="nav-link" href="https://github.com/kernelcoffee/SteamSelfGifter" target="_blank" rel="noopener noreferrer">{svg_icon("external")}<span>SteamSelfGifter</span></a>'
@@ -1364,7 +1337,7 @@ def rewards_summary():
         return {"connected": False}
     c = None
     try:
-        c = sqlite3.connect("file:" + path + "?mode=ro", uri=True, timeout=2)
+        c = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
         joined = c.execute("SELECT COUNT(*) FROM entries WHERE status='success'").fetchone()[0]
         wins = c.execute("SELECT COUNT(*) FROM giveaways WHERE is_won=1").fetchone()[0]
         return {"connected": True, "entered": joined, "wins": wins}
@@ -1375,6 +1348,127 @@ def rewards_summary():
             c.close()
 
 
+def asf_summary():
+    # Read only plugin metadata, never ASF credentials or account session files.
+    path = os.environ.get("ASF_PACKAGES_DB", "").strip()
+    if not path or not os.path.isfile(path):
+        return {"connected": False}
+    try:
+        if os.path.getsize(path) > 4_000_000:
+            raise ValueError("file too large")
+        with open(path, encoding="utf-8") as stream:
+            data = json.load(stream)
+        if not isinstance(data, dict):
+            raise ValueError("invalid object")
+        seen, new = data.get("SeenPackages"), data.get("NewOwnedPackages")
+        if not isinstance(seen, list) or not isinstance(new, list):
+            raise ValueError("missing package arrays")
+        return {
+            "connected": True,
+            "seen_packages": len(seen),
+            "new_owned_queue": len(new),
+        }
+    except (OSError, ValueError, UnicodeError):
+        return {"connected": False, "error": "ASF snapshot unavailable"}
+
+
+def steamgifts_wins(limit=8):
+    # SteamSelfGifter snapshot is read-only; do not expose any account data.
+    path = os.environ.get("STEAMGIFTS_DB", "").strip()
+    if not path or not os.path.isfile(path):
+        return None
+    conn = None
+    try:
+        conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT code,game_name,won_at FROM giveaways "
+            "WHERE is_won=1 AND code IS NOT NULL AND code != '' "
+            "ORDER BY won_at DESC LIMIT ?",
+            (max(1, min(1000, int(limit))),),
+        ).fetchall()
+        return [{"code": str(r["code"]), "game": str(r["game_name"] or "Unknown game")[:160],
+                 "won_at": str(r["won_at"] or "")[:40]} for r in rows]
+    except (OSError, sqlite3.Error, ValueError):
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def notify_new_wins():
+    # First valid snapshot establishes a silent baseline; duplicates are persisted locally.
+    if not (NOTIFY_NEW_WINS and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
+        return {"enabled": False}
+    rows = steamgifts_wins(limit=1000)
+    if rows is None:
+        return {"enabled": True, "available": False}
+    with _db_lock, db() as conn:
+        initialized = conn.execute(
+            "SELECT value FROM meta WHERE key='win_notifications_initialized'"
+        ).fetchone()
+        if initialized is None:
+            conn.executemany(
+                "INSERT OR IGNORE INTO win_notifications VALUES(?,?)",
+                [(r["code"], now_iso()) for r in rows],
+            )
+            conn.execute("INSERT INTO meta(key,value) VALUES('win_notifications_initialized','1')")
+            return {"enabled": True, "baseline": True}
+        seen = {row[0] for row in conn.execute("SELECT giveaway_code FROM win_notifications")}
+    new = [r for r in rows if r["code"] not in seen]
+    if not new:
+        return {"enabled": True, "sent": 0}
+    lines = ["🏆 <b>FreebieHarbor: " + str(len(new)) + " new SteamGifts win(s)</b>"]
+    for item in new[:6]:
+        code = item["code"]
+        name = html.escape(item["game"])
+        if re.fullmatch(r"[A-Za-z0-9]{5}", code):
+            lines.append("• <a href='https://www.steamgifts.com/giveaway/" +
+                         code + "/'>" + name + "</a>")
+        else:
+            lines.append("• " + name)
+    if len(new) > 6:
+        lines.append("… plus " + str(len(new) - 6) + " more")
+    try:
+        _send_telegram("\n".join(lines))
+    except RuntimeError as exc:
+        set_meta("win_notification_error", str(exc))
+        return {"enabled": True, "sent": 0, "error": str(exc)}
+    with _db_lock, db() as conn:
+        conn.executemany("INSERT OR IGNORE INTO win_notifications VALUES(?,?)",
+                         [(r["code"], now_iso()) for r in new])
+    set_meta("win_notification_error", "")
+    set_meta("last_win_notification_at", now_iso())
+    return {"enabled": True, "sent": len(new)}
+
+
+def render_rewards_content():
+    steam, asf = rewards_summary(), asf_summary()
+    wins = steamgifts_wins()
+    win_rows = "".join(
+        '<div class="list-row"><div class="row-main"><b>' + html.escape(win["game"]) +
+        '</b><div class="text-sm muted">' + html.escape(win["won_at"]) + '</div></div>' +
+        '<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener noreferrer" ' +
+        'href="https://www.steamgifts.com/giveaway/' +
+        html.escape(win["code"]) + '/">View</a></div>'
+        for win in (wins or []) if re.fullmatch(r"[A-Za-z0-9]{5}", win["code"])
+    ) or '<div class="empty">No recorded wins, or no SteamGifts snapshot connected.</div>'
+    details = "SteamGifts snapshot connected" if steam.get("connected") else "SteamGifts not connected"
+    packages = "ASF plugin snapshot connected" if asf.get("connected") else "ASF plugin not connected"
+    return f'''<div class="page"><div class="page-title"><h2>Reward tracking</h2></div>
+    <div class="stats-grid">
+    {_stat_card("Giveaway entries",steam.get("entered","—"),"blue")}
+    {_stat_card("SteamGifts wins",steam.get("wins","—"),"green")}
+    {_stat_card("ASF packages seen",asf.get("seen_packages","—"),"teal")}
+    {_stat_card("ASF new-owned queue",asf.get("new_owned_queue","—"),"purple")}
+    </div><div class="card"><div class="card-body">
+    <p>{details} · {packages}</p>
+    <p class="text-sm muted">These are read-only snapshot statistics. ASF plugin counters are not
+    proof of redeemed games or Steam library ownership.</p></div></div>
+    <div class="card"><div class="card-header"><h3>Recent recorded wins</h3></div>
+    <div class="card-body list-rows">{win_rows}</div></div></div>'''
+
+
 def render_dashboard_content(status):
     counts = reddit_counts()
     rewards = rewards_summary()
@@ -1383,6 +1477,13 @@ def render_dashboard_content(status):
     cards = "".join(_external_card(item, "/offers") for item in offers) if offers else '<div class="card empty">No active offers yet. Try Refresh.</div>'
     last = html.escape(str(get_meta("last_refresh_at") or "Not yet"))
     status_line = " · ".join(html.escape(k)+": "+str(v) for k, v in sorted(sources.items())) or "First update pending"
+    provider_names = ("gamerpower", "freetokeep", "ggdeals", "alienware", "indiegala")
+    failed_sources = [name for name in provider_names if get_meta("poll_error:" + name, "")]
+    source_warning = (
+        '<p class="text-sm" style="color:var(--danger)">Source checks failed: ' +
+        html.escape(", ".join(failed_sources)) + '</p>'
+        if failed_sources else ""
+    )
     reddit_note = "Reddit adapter connected" if PUBLISHER_BASE else "Reddit requires an optional compatible Publisher API"
     demo_note = '<div class="status-banner warning">Sample data: fictional offers for UI preview.</div>' if get_meta("demo_mode") == "1" else ""
     demo_enabled = get_meta("demo_mode") == "1"
@@ -1392,7 +1493,7 @@ def render_dashboard_content(status):
         '<form method="post" action="/refresh"><button class="btn btn-primary btn-md">Refresh now</button></form>'
     )
     offer_label = "Sample offers" if demo_enabled else "Live offers"
-    return f'''<div class="page"><div class="page-title"><h2>Free game radar</h2>{refresh_action}</div>{demo_note}<div class="stats-grid">{_stat_card(offer_label,total,"blue")}{_stat_card("Reddit posts",counts["open"],"green")}{_stat_card("SteamGifts entries",rewards.get("entered","—"),"teal")}{_stat_card("SteamGifts wins",rewards.get("wins","—"),"purple")}</div><div class="card"><div class="card-body"><b>Source health</b><p class="text-sm muted">{status_line}</p><p class="text-sm muted">{reddit_note}</p></div></div><div class="page-title"><h2>New offers</h2><a class="btn btn-ghost btn-sm" href="/offers">Browse all</a></div><div class="offer-grid">{cards}</div></div>'''
+    return f'''<div class="page"><div class="page-title"><h2>Free game radar</h2>{refresh_action}</div>{demo_note}<div class="stats-grid">{_stat_card(offer_label,total,"blue")}{_stat_card("Reddit posts",counts["open"],"green")}{_stat_card("SteamGifts entries",rewards.get("entered","—"),"teal")}{_stat_card("SteamGifts wins",rewards.get("wins","—"),"purple")}</div><div class="card"><div class="card-body"><b>Source status</b><p class="text-sm muted">Active offers: {status_line}</p>{source_warning}<p class="text-sm muted">{reddit_note}</p></div></div><div class="page-title"><h2>New offers</h2><a class="btn btn-ghost btn-sm" href="/offers">Browse all</a></div><div class="offer-grid">{cards}</div></div>'''
 
 
 def render_offers_content(query):
@@ -1414,6 +1515,7 @@ def render_page(path, query):
     if path in {"/","/dashboard"}: return render_shell("dashboard",render_dashboard_content(status),status,"FreebieHarbor · Dashboard")
     if path=="/offers": return render_shell("offers",render_offers_content(query),status,"FreebieHarbor · External Offers")
     if path=="/reddit": return render_shell("reddit",render_reddit_content(query),status,"FreebieHarbor · Reddit")
+    if path=="/rewards": return render_shell("rewards",render_rewards_content(),status,"FreebieHarbor · Rewards")
     if path=="/indiegala": return render_shell("indiegala",render_indiegala_content(status),status,"FreebieHarbor · IndieGala")
     return None
 
@@ -1480,7 +1582,10 @@ class Handler(BaseHTTPRequestHandler):
             }), "application/json")
             return
         if path == "/api/rewards":
-            self.send(200, json.dumps(rewards_summary()), "application/json")
+            self.send(200, json.dumps({"steamgifts": rewards_summary(), "asf": asf_summary()}), "application/json")
+            return
+        if path == "/api/wins":
+            self.send(200, json.dumps({"wins": steamgifts_wins() or []}), "application/json")
             return
         if path == "/api/posts":
             with _db_lock, db() as c:

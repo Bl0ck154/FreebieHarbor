@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup and troubleshooting
+    url: https://github.com/Bl0ck154/FreebieHarbor/blob/main/docs/troubleshooting.md
+    about: Read the installation FAQ before opening a report.
+  - name: General questions
+    url: https://github.com/Bl0ck154/FreebieHarbor/discussions
+    about: Ask how to configure a source, Docker or a read-only adapter.

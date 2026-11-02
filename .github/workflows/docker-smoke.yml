@@ -31,6 +31,8 @@ jobs:
           done
           python -c 'import json; assert json.load(open("/tmp/health.json"))["ok"]'
           curl --fail --silent http://127.0.0.1:18081/dashboard | grep -q FreebieHarbor
+          curl --fail --silent http://127.0.0.1:18081/rewards | grep -q 'Reward tracking'
+          curl --fail --silent http://127.0.0.1:18081/api/wins | grep -q '"wins":'
           curl --fail --silent http://127.0.0.1:18081/api/rewards | grep -q '"connected": false'
           test "$(curl -s -o /dev/null -w '%{http_code}' \
             -H 'Origin: https://evil.example' \

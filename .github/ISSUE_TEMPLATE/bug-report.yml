@@ -1,0 +1,37 @@
+name: Bug report
+description: Report a reproducible FreebieHarbor problem (without disclosing credentials).
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove tokens, cookies, account IDs, chat IDs, private hostnames and databases from your report.
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened?
+      description: Include the expected result and what actually happened.
+      placeholder: "After I refreshed the dashboard, ..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Start with docker compose up -d ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Installation type
+      options:
+        - Docker Compose
+        - Python directly
+        - Other
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Provide version, source name and any non-sensitive errors. Do not upload .env or SQLite databases.

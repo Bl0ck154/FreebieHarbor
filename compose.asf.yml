@@ -1,0 +1,11 @@
+# Optional read-only plugin snapshot. Never use ASF.db or bot account files here.
+# ASF_PACKAGES_SOURCE=/absolute/path/to/copy-of-FreePackages.db docker compose -f compose.yml -f compose.asf.yml up -d
+services:
+  hub:
+    environment:
+      ASF_PACKAGES_DB: /integration/freepackages.json
+    volumes:
+      - type: bind
+        source: ${ASF_PACKAGES_SOURCE:?Specify a copied FreePackages plugin JSON file}
+        target: /integration/freepackages.json
+        read_only: true
