@@ -7,7 +7,7 @@ Do not expose it directly to the public internet. If you use a reverse proxy, pr
 - Never upload account cookies, Steam session files, production databases, or access tokens.
 - Mount the SteamSelfGifter SQLite file read-only and only if you need the stats adapter.
 - The starter install does not require account credentials or AI keys.
-- Report vulnerabilities privately when they contain sensitive data. Do not post user records or tokens in public issues.
+- Report vulnerabilities privately using [GitHub private vulnerability reporting](https://github.com/Bl0ck154/FreebieHarbor/security/advisories/new). Do not post exploit details, user records, or tokens in public issues.
 
 Telegram alerts are opt-in. Store the bot token only in the ignored .env file or your secret manager; never in a public issue, screenshot, or CI logs.
 

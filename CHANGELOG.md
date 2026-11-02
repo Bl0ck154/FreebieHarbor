@@ -4,9 +4,14 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## v0.3.0 — 2026-11-02
+
 - Optional read-only ASF FreePackages counters and SteamGifts win history.
 - Opt-in win notifications with silent initial baseline and duplicate suppression.
 - Source status displays provider failures separately from offer counts.
+- Version reported by /health; aligned release tag and Docker image metadata.
 - Public issue templates, support documentation and repository cleanup.
 
 ## v0.2.1-preview — 2026-11-02
