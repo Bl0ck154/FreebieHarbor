@@ -1,54 +1,52 @@
-# Friends mode: private multi-user tracking
+# FreebieHarbor Friends — invitation-only preview
 
-**Status:** proposed design, not implemented. Start with a small, invited group before considering public registration.
+Friends mode runs as an optional second service. Users register with a single-use invite and a password, then browse the same public offer feed with their own claim and ignore history.
 
-## What a friend can do
+The existing owner-only Steam Farm stays completely separate. Friends accounts do not have SteamGifts or IndieGala automated entry, and the portal never receives Steam passwords, Steam Guard codes, browser sessions or ASF tokens.
 
-1. Accept a one-time invitation and create their own FreebieHarbor profile.
-2. See the same public game offers collected once by the shared server.
-3. Save personal filters, wishlists, and claimed/ignored statuses independently.
-4. Receive optional notifications for matching new offers.
-5. Open the source site to claim or enter manually using their own account.
+## Available in this preview
 
-This supports automatically finding and notifying users about public offers. It does **not** automate SteamGifts entries, Steam store transactions, Steam account creation, key redemption or gameplay rewards.
+- One-time invitations administered locally.
+- Independent profiles, password hashing with scrypt, random session cookies, CSRF checks and individual offer states.
+- Sanitized public game catalog exported from the existing FreebieHarbor database.
+- Login rate limiting and administrator controls to revoke accounts and their sessions.
 
-## Why auto-entry must not be part of the hosted service
+Not implemented: Steam account linking, automatic Steam license redemption by the central portal, per-user notifications, account recovery, self-signup or billing.
 
-SteamGifts rules explicitly prohibit scripts that automatically enter giveaways, including entry while the user is away. The rules also limit each person to one account and prohibit account sharing. Steam's Subscriber Agreement restricts unauthorized automation. Hosting another person's login sessions and auto-entering for them creates account, security and platform-compliance risks.
+## Deployment and invitations
 
-Read the official rules before adding a provider:
-- https://www.steamgifts.com/about/guidelines
-- https://store.steampowered.com/agreement/
+The dedicated deployment is in deploy/friends.compose.yml and listens on localhost port 18084. It has its own database volume, and mounts a sanitized export of the public catalog read-only. It is not enabled by the default compose.
 
-## Implementation stages
+For local preview, launch from the repository checkout with:
 
-### Stage 1 — accounts and data isolation
+    docker compose -f deploy/friends.compose.yml up -d --no-build
 
-- Invite-only registration, no open signups; owner can revoke access.
-- One user per session; secure password hashing or established external identity provider, protected cookies (HttpOnly, Secure, SameSite) and CSRF tokens.
-- User-owned tables for subscriptions, offer states, alerts and optional linked identities.
-- Database ownership checks on every query, export and action.
-- Global `external_offers` and source polling remain shared and read-only to all users.
-- Per-user rate limits, secure invite expiry, minimal audit logs, backups and account deletion.
-- No stored Steam, SteamGifts or storefront passwords, cookies or access tokens.
+For public HTTPS use, set FRIENDS_PUBLIC_ORIGIN to the exact HTTPS origin and FRIENDS_COOKIE_SECURE=true. Forward the original Host and set X-Real-IP from the real request address. Never publish port 8088 directly.
 
-### Stage 2 — notifications
+To create a single-use invitation:
 
-- Per-user opt-in Telegram destination or email address after verification.
-- Each user's own filters, quiet hours, and notification history.
-- Queue and deduplicate notifications; never send one user's data to another user.
-- One provider poll serves all users. Never fan out account logins to upstream sites.
+    docker exec freebieharbor-friends python3 /app/tools/friends_admin.py invite --hours 48
 
-### Stage 3 — small invite-only pilot
+The command prints a sign-up URL and a separate invite code. Send the code privately. It must never appear in a URL or public issue. Disable accounts and revoke sessions with:
 
-- Up to 3–5 trusted friends, separate profiles, no automatic game entries.
-- Test revoked users, session expiry, simultaneous edits, migrations and accidental cross-user data exposure.
-- Keep old Steam Farm/owner credentials entirely isolated from the new multi-user service.
+    docker exec freebieharbor-friends python3 /app/tools/friends_admin.py disable username
 
-## Deployment boundary
+The private user database belongs to the friends-data Docker volume. Back it up separately.
 
-The existing FreebieHarbor app is an *unauthenticated single-owner local dashboard*, protected externally by reverse proxy Basic Auth. It is **not suitable for opening to public registrations today**. Build and test friends mode in a separate service and database. Keep the current proxy protected until individual-user login, data isolation and security tests have been reviewed.
+## Free-to-keep Steam licenses
 
-## Optional compliant future integrations
+The independent FreePackages plugin for ArchiSteamFarm supports per-bot free-package discovery and activation. It has filters including NoCostOnly, IgnoreFreeWeekends and PauseFreePackagesWhilePlaying. This is the mechanism already available for the owner's private Steam automation, and it need not be reimplemented.
 
-Only use provider operations explicitly allowed by the platform and supported by its official API/auth mechanisms. Any feature that submits a giveaway entry or claims a Steam license must be reviewed against current platform rules before implementation.
+The sample, password-free configuration fragment is produced by:
+
+    python3 tools/asf_freepackages_profile.py
+
+A friend can install ASF and the FreePackages plugin on their own computer or private server, confirm Steam login in their own environment and choose their own activation filters. FreebieHarbor does not host their account sessions.
+
+Steam's Subscriber Agreement restricts automated interactions; this third-party plugin is not endorsed by Valve and may carry account-restriction risk. The central friends service only discovers offers and tracks personal states. No central automatic Steam claiming is available at this stage.
+
+References: https://github.com/Citrinate/FreePackages and https://store.steampowered.com/agreement/
+
+## Next priorities
+
+Invite pilot security review; verified user notifications and recovery; optionally supported account integrations only after confirming platform permissions and secure credential isolation.
