@@ -3,7 +3,7 @@
 There are **three separate layers**:
 
 1. **FreebieHarbor GitHub repository** is the source of truth for the public Python app.
-2. **GHCR** holds versioned Docker images built from tagged GitHub releases (for example `ghcr.io/bl0ck154/freebieharbor:v0.4.2`).
+2. **GHCR** holds versioned Docker images built from tagged GitHub releases (for example `ghcr.io/bl0ck154/freebieharbor:v0.4.3`).
 3. **An installed server container** uses whichever image version its Compose file explicitly pins. It **does not automatically update** when code is pushed to GitHub.
 
 This is intentional: a developer's push should not silently restart a real user's server or migrate their database.
@@ -53,3 +53,27 @@ Run the included standard-library exporter **as a user with read access to the s
       --output-dir exports
 
 It writes only `entries(status)`, `giveaways(code,game_name,is_won,won_at)`, and a small ASF JSON document containing aggregate counts. Both writes use atomic replacement. The source files are opened read-only. Keep the exports directory out of Git. Restart the canary once after adding the read-only volume mount; later exports can refresh the files in place. These are **recorded** wins and plugin counters; they do not verify Steam library ownership.
+
+## Migrating the old public-offer history
+
+The optional `tools/migrate_legacy_offers.py` script preserves only historical
+GamerPower, FreeToKeep and GG.deals offers. It excludes Reddit, IndieGala and
+all source `raw_json` payloads. It also excludes AI metadata and credentials.
+
+Take a consistent SQLite backup of the *target* database first, using the
+Python SQLite `backup()` API. Then preview:
+
+    python3 tools/migrate_legacy_offers.py --source /path/to/legacy/giveaways.db --target /path/to/new/giveaways.db
+
+If the reported counts and provider list look right, apply:
+
+    python3 tools/migrate_legacy_offers.py --source /path/to/legacy/giveaways.db --target /path/to/new/giveaways.db --apply
+
+The source is read-only. Existing target offers keep their metadata and
+current/active status; previously unseen offers are imported as inactive history.
+An earlier user choice of `claimed` or `ignored` may be transferred only
+when the destination is still marked `new`. The import is idempotent. Archived
+entries can be inspected in Free games → History.
+
+Do not use this script to migrate Steam account sessions or external giveaway
+automation. The old production service can continue working independently.
