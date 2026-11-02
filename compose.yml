@@ -11,6 +11,10 @@ services:
       PUBLISHER_BASE: "${PUBLISHER_BASE:-}"
       INDIEGALA_WORKER: "${INDIEGALA_WORKER:-}"
       STEAMGIFTS_DB: "${STEAMGIFTS_DB:-}"
+      NOTIFY_NEW_OFFERS: "${NOTIFY_NEW_OFFERS:-false}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost,127.0.0.1,::1}"
     volumes:
       - data:/data
     mem_limit: 192m

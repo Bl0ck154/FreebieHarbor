@@ -1,5 +1,10 @@
 # ⚓ FreebieHarbor
 
+[![Python checks](https://github.com/Bl0ck154/FreebieHarbor/actions/workflows/tests.yml/badge.svg)](https://github.com/Bl0ck154/FreebieHarbor/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/Bl0ck154/FreebieHarbor?include_prereleases)](https://github.com/Bl0ck154/FreebieHarbor/releases)
+[![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+
 **A self-hosted radar for free PC games and giveaways.**
 
 FreebieHarbor collects free-game offers in a local searchable dashboard. It keeps a history of offers, supports optional read-only SteamGifts statistics and uses no AI tokens, Steam credentials or paid APIs.
@@ -18,10 +23,24 @@ Open http://127.0.0.1:18081 on your server. The port is intentionally localhost-
 
 Then visit http://127.0.0.1:18081.
 
+## At a glance
+
+| Source / integration | In the default install? | What it does |
+| --- | --- | --- |
+| GamerPower | Yes | Tracks active game giveaways |
+| FreeToKeep.gg | Yes | Tracks free-to-keep offers |
+| GG.deals RSS | Yes | Discovers limited-time PC game freebies |
+| Alienware Arena | Best effort | Finds public key drops; some VPS IPs are blocked |
+| Reddit | Optional | Requires a compatible, authorized Publisher API |
+| SteamSelfGifter | Optional | Read-only entry and win counts from a SQLite snapshot |
+| ArchiSteamFarm | No | External upstream software, not bundled |
+| IndieGala | No | Manual visit/discovery only; no automated entries |
+
 ## Features
 
 - GamerPower, FreeToKeep, GG.deals RSS and Alienware Arena offer discovery.
 - Search, source filters, offer history and manual refresh.
+- Optional Telegram notifications for *new* offers, grouped into one message per refresh. First enabled scan establishes a baseline with no alert flood.
 - Periodic collection and local SQLite storage.
 - Optional Reddit discovery through a compatible external Publisher API (off by default).
 - Optional read-only SteamSelfGifter statistics (entries and recorded wins).
@@ -41,10 +60,28 @@ Copy .env.example to .env only if you need to change defaults.
 | PUBLISHER_BASE | blank | Optional compatible Reddit API |
 | INDIEGALA_WORKER | blank | Optional separate discovery worker |
 | STEAMGIFTS_DB | blank | Optional read-only SteamSelfGifter DB path |
+| NOTIFY_NEW_OFFERS | false | Opt in to new-offer Telegram alerts |
+| TELEGRAM_BOT_TOKEN | blank | Bot token; never commit or log it |
+| TELEGRAM_CHAT_ID | blank | Telegram recipient ID |
+| ALLOWED_HOSTS | localhost,127.0.0.1,::1 | Hostnames allowed to access the dashboard |
 
-The Reddit adapter expects a compatible backend implementing /internal/reddit/subreddit and /internal/reddit/preflight. A first-party standalone Reddit adapter is planned. Without that backend, the rest of the radar works.
+### Telegram alerts
 
-For SteamGifts stats, mount the existing SteamSelfGifter SQLite DB read-only into the container, and point STEAMGIFTS_DB to that single mounted file. Do not mount or share the containing config directory, as it can hold Steam session data.
+Set NOTIFY_NEW_OFFERS=true plus TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your local .env, then restart with docker compose up -d. The first successful refresh builds the baseline without sending old results. Later new offers are delivered in a single HTML-formatted message (up to six links, with a total count). Failures retry on the following poll. Tokens are never returned by the dashboard.
+
+### Reddit availability
+
+Reddit has announced changes to its public Data API and the end of traditional RSS support on November 13, 2026. We do not rely on unauthenticated Reddit scraping or RSS in the default release. See the official Reddit Developer Platform for future supported access.
+
+The Reddit adapter expects a compatible backend implementing /internal/reddit/subreddit and /internal/reddit/preflight. A first-party standalone Reddit adapter is planned. Without that backend, the rest of the radar works. Reddit posts are pruned after 24 hours; a compatible backend must also remove deleted content promptly to meet Reddit requirements.
+
+For SteamGifts stats, make a consistent SQLite snapshot and use the optional overlay:
+
+    STEAMGIFTS_DB_SOURCE=/absolute/path/to/steamgifts-snapshot.db docker compose -f compose.yml -f compose.steamgifts.yml up -d
+
+See [the architecture notes](docs/architecture.md) for the safe snapshot command. Do not mount or publish the SteamSelfGifter config directory, as it can hold account sessions.
+
+This project attributes GamerPower for its public [free games API](https://www.gamerpower.com/api-read).
 
 ## Related projects
 
@@ -60,6 +97,10 @@ Python 3.13 standard library, no pip dependencies.
 
     python3 -m unittest discover -s tests -v
     DATA_DIR=./local-data PORT=8080 python3 app/hub.py
+
+## Health and tests
+
+The HTTP health endpoint is available at /health. Run local tests with Python 3.13; GitHub Actions runs the same suite on pushes and pull requests. Docker Compose config validation is separate from a full image smoke test.
 
 ## Roadmap
 
