@@ -9,7 +9,7 @@
 
 FreebieHarbor collects free-game offers in a local searchable dashboard. It keeps a history of offers, supports optional read-only SteamGifts and ASF package statistics and uses no AI tokens, Steam credentials or paid APIs.
 
-This is an early public preview of the original giveaway dashboard from a private Steam automation stack. It does not automatically enter giveaways.
+This is the public 0.x release of a standalone dashboard extracted from a private Steam automation stack. It does not automatically enter giveaways.
 
 ## Quick start
 
@@ -54,7 +54,7 @@ Then visit http://127.0.0.1:18081.
 - JSON endpoints: /health, /api/external-offers, /api/posts, /api/wins and /api/rewards.
 - No external AI, Steam password or API key required.
 
-Availability of public sources varies by region and IP. Certain providers block datacenter traffic. No prizes or free-game claims are guaranteed.
+Availability of public sources varies by region and IP. Certain providers block datacenter traffic. No prizes or free-game claims are guaranteed. The 0.x API can change between minor releases; see the changelog.
 
 ## Configuration
 
@@ -137,7 +137,7 @@ Open http://127.0.0.1:8080/dashboard. The demo data is explicitly labeled and th
 
 ## Health and tests
 
-The HTTP health endpoint is available at /health. Run local tests with Python 3.13; GitHub Actions runs the same suite on pushes and pull requests. Docker Compose config validation is separate from a full image smoke test.
+The HTTP health endpoint is available at /health, including the running app version. Run local tests with Python 3.13; GitHub Actions runs the same suite on pushes and pull requests. Docker Compose config validation is separate from a full image smoke test.
 
 ## Roadmap
 

@@ -42,6 +42,9 @@ class HubTests(unittest.TestCase):
         self.assertIn("FreebieHarbor", page)
         self.assertNotIn("Generate AI reply", page)
 
+    def test_release_version_matches_software(self):
+        self.assertEqual(hub.APP_VERSION, "0.3.0")
+
     def test_optional_rewards_not_configured(self):
         with patch.dict(os.environ, {"STEAMGIFTS_DB": ""}):
             self.assertFalse(hub.rewards_summary()["connected"])

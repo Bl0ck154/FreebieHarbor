@@ -16,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+APP_VERSION = "0.3.0"
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "giveaways.db")
 PUBLISHER_BASE = os.environ.get("PUBLISHER_BASE", "").rstrip("/")
@@ -1572,6 +1573,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/health":
             self.send(200, json.dumps({
                 "ok": True,
+                "version": APP_VERSION,
                 "last_refresh_at": get_meta("last_refresh_at"),
                 "alienware_direct_state": get_meta("alienware_direct_state", "unknown"),
                 "poll_errors": {
