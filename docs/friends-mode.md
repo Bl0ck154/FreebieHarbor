@@ -53,6 +53,6 @@ Invite pilot security review; verified user notifications and recovery; optional
 
 ## Shared server-side ASF (experimental)
 
-A single, separate ASF process can manage multiple friend bots without a container per friend. Each Friend first verifies their SteamID with Valve, then submits a Steam account login name and explicit opt-in. The system stages a disabled bot configuration; it does not collect a Steam password. Consult [the ASF integration lifecycle](steam-integration.md) before enabling bots.
+A single, separate ASF process can manage multiple friend bots without a container per friend. Each friend may link several distinct SteamIDs separately through Valve and submit a Steam login name and explicit opt-in for each. The system stages a disabled bot configuration; it does not collect a Steam password. Consult [the ASF integration lifecycle](steam-integration.md) before enabling bots.
 
 **QR login limitation:** ASF currently does not initiate QR login in Headless mode. Our shared server is Headless; the login broker described in [Steam integration](steam-integration.md) is still unimplemented. The dashboard must not imply automatic claiming is active.
