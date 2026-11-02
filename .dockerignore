@@ -9,3 +9,4 @@ docs
 *.cookie
 __pycache__
 demo-data
+exports

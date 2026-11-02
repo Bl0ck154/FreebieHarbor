@@ -6,6 +6,12 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.4.2 — 2026-11-02
+
+- Add an optional, credential-free rewards exporter for existing SteamSelfGifter and ASF installations.
+- Produce narrow read-only SQLite/JSON snapshots using atomic file replacement; never copy account-session files or ASF package IDs.
+- Allow the isolated server canary to read these sanitized snapshots while retaining separate storage and disabled notifications.
+
 ## v0.4.1 — 2026-11-02
 
 - Manual Refresh now returns immediately while public sources update in a separate thread.

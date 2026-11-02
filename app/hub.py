@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "giveaways.db")
 POLL_SECONDS = max(300, int(os.environ.get("POLL_SECONDS", "1200")))
@@ -973,6 +973,11 @@ def asf_summary():
             data = json.load(stream)
         if not isinstance(data, dict):
             raise ValueError("invalid object")
+        if "seen_packages_count" in data or "new_owned_queue_count" in data:
+            seen, new = data.get("seen_packages_count"), data.get("new_owned_queue_count")
+            if not all(type(n) is int and 0 <= n <= 10_000_000 for n in (seen, new)):
+                raise ValueError("invalid sanitized counts")
+            return {"connected": True, "seen_packages": seen, "new_owned_queue": new}
         seen, new = data.get("SeenPackages"), data.get("NewOwnedPackages")
         if not isinstance(seen, list) or not isinstance(new, list):
             raise ValueError("missing package arrays")

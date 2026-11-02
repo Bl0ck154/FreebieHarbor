@@ -43,16 +43,16 @@ This shows clearly labeled fictional offers and disables network polling. The se
 
 ## How do I run it without building a Docker image?
 
-Use the public `ghcr.io/bl0ck154/freebieharbor:v0.4.1` image on Linux amd64. The README shows a complete `docker run` command with a local-only port and persistent volume. For ARM devices, use the source Compose build until a native image is published.
+Use the public `ghcr.io/bl0ck154/freebieharbor:v0.4.2` image on Linux amd64. The README shows a complete `docker run` command with a local-only port and persistent volume. For ARM devices, use the source Compose build until a native image is published.
 
 ## How do I update the prebuilt Docker container?
 
 Your named Docker volume stores the database. Pull the desired new release tag and recreate the container with the **same** volume name. Do not delete `freebieharbor-data`. For example:
 
-    docker pull ghcr.io/bl0ck154/freebieharbor:v0.4.1
+    docker pull ghcr.io/bl0ck154/freebieharbor:v0.4.2
     docker stop freebieharbor
     docker rm freebieharbor
-    docker run -d --name freebieharbor --restart unless-stopped -p 127.0.0.1:18081:8080 -v freebieharbor-data:/data ghcr.io/bl0ck154/freebieharbor:v0.4.1
+    docker run -d --name freebieharbor --restart unless-stopped -p 127.0.0.1:18081:8080 -v freebieharbor-data:/data ghcr.io/bl0ck154/freebieharbor:v0.4.2
 
 For upgrades from 0.3.x, the experimental Reddit routes and endpoints are retired. The previous SQLite database is not deleted by this change.
 

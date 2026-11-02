@@ -3,7 +3,7 @@
 name: freebieharbor-canary
 services:
   hub:
-    image: ghcr.io/bl0ck154/freebieharbor:v0.4.1
+    image: ghcr.io/bl0ck154/freebieharbor:v0.4.2
     container_name: freebieharbor-canary
     restart: unless-stopped
     ports:
@@ -13,8 +13,14 @@ services:
       NOTIFY_NEW_OFFERS: "false"
       NOTIFY_NEW_WINS: "false"
       ALLOWED_HOSTS: "localhost,127.0.0.1,::1"
+      STEAMGIFTS_DB: "/integrations/steamgifts-snapshot.db"
+      ASF_PACKAGES_DB: "/integrations/asf-freepackages.json"
     volumes:
       - data:/data
+      - type: bind
+        source: ${FREEBIEHARBOR_EXPORTS_DIR:-../exports}
+        target: /integrations
+        read_only: true
     read_only: true
     tmpfs: [/tmp]
     mem_limit: 160m

@@ -33,7 +33,7 @@ class HubTests(unittest.TestCase):
         self.assertNotIn("Generate AI reply", page)
 
     def test_release_version_matches_software(self):
-        self.assertEqual(hub.APP_VERSION, "0.4.1")
+        self.assertEqual(hub.APP_VERSION, "0.4.2")
 
     def test_optional_rewards_not_configured(self):
         with patch.dict(os.environ, {"STEAMGIFTS_DB": ""}):
@@ -302,8 +302,22 @@ class HubTests(unittest.TestCase):
             serving.join(timeout=3)
 
     def test_release_version_in_dashboard_and_user_agent(self):
-        self.assertIn("FreebieHarbor v0.4.1", hub.render_page("/dashboard", {}))
-        self.assertIn("0.4.1", hub.EXTERNAL_USER_AGENT)
+        self.assertIn("FreebieHarbor v0.4.2", hub.render_page("/dashboard", {}))
+        self.assertIn("0.4.2", hub.EXTERNAL_USER_AGENT)
+
+
+    def test_sanitized_asf_count_format(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            path = Path(dirname) / "aggregate.json"
+            path.write_text(json.dumps({
+                "schema_version": 1,
+                "seen_packages_count": 116,
+                "new_owned_queue_count": 0,
+            }))
+            with patch.dict(os.environ, {"ASF_PACKAGES_DB": str(path)}):
+                self.assertEqual(hub.asf_summary(), {
+                    "connected": True, "seen_packages": 116, "new_owned_queue": 0
+                })
 
 
 if __name__ == "__main__":

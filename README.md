@@ -35,7 +35,7 @@ docker volume create freebieharbor-data
 docker run -d --name freebieharbor --restart unless-stopped \
   -p 127.0.0.1:18081:8080 \
   -v freebieharbor-data:/data \
-  ghcr.io/bl0ck154/freebieharbor:v0.4.1
+  ghcr.io/bl0ck154/freebieharbor:v0.4.2
 ```
 
 Open **http://127.0.0.1:18081** on the host. For a remote server, connect over SSH:
