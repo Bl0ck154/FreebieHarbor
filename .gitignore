@@ -19,3 +19,4 @@ __pycache__/
 *.key
 *.p12
 .DS_Store
+demo-data/

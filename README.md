@@ -98,6 +98,15 @@ Python 3.13 standard library, no pip dependencies.
     python3 -m unittest discover -s tests -v
     DATA_DIR=./local-data PORT=8080 python3 app/hub.py
 
+## Try the dashboard with fictional demo data
+
+You can preview the layout without any external API requests or account data:
+
+    DATA_DIR=./demo-data python3 tools/seed_demo.py
+    DATA_DIR=./demo-data PORT=8080 python3 app/hub.py
+
+Open http://127.0.0.1:8080/dashboard. The demo data is explicitly labeled and the source poller is disabled. The fixture script refuses to overwrite an existing database.
+
 ## Health and tests
 
 The HTTP health endpoint is available at /health. Run local tests with Python 3.13; GitHub Actions runs the same suite on pushes and pull requests. Docker Compose config validation is separate from a full image smoke test.

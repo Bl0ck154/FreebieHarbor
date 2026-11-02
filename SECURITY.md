@@ -10,3 +10,5 @@ Do not expose it directly to the public internet. If you use a reverse proxy, pr
 - Report vulnerabilities privately when they contain sensitive data. Do not post user records or tokens in public issues.
 
 Telegram alerts are opt-in. Store the bot token only in the ignored .env file or your secret manager; never in a public issue, screenshot, or CI logs.
+
+The direct Python development command listens on 127.0.0.1 by default. Docker uses 0.0.0.0 inside its isolated container, while Compose binds the host port to 127.0.0.1.

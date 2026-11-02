@@ -175,5 +175,10 @@ class HubTests(unittest.TestCase):
             thread.join(timeout=4)
 
 
+    def test_demo_poll_is_disabled(self):
+        with patch.object(hub, "get_meta", return_value="1"):
+            self.assertTrue(hub.poll_all()["demo"])
+
+
 if __name__ == "__main__":
     unittest.main()
