@@ -111,16 +111,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
         cols = {row[1] for row in c.execute("PRAGMA table_info(posts)").fetchall()}
-        if "ai_draft" not in cols:
-            c.execute("ALTER TABLE posts ADD COLUMN ai_draft TEXT")
-        if "ai_draft_at" not in cols:
-            c.execute("ALTER TABLE posts ADD COLUMN ai_draft_at TEXT")
         if "outbound_url" not in cols:
             c.execute("ALTER TABLE posts ADD COLUMN outbound_url TEXT")
-        if "ai_verdict" not in cols:
-            c.execute("ALTER TABLE posts ADD COLUMN ai_verdict TEXT")
-        if "ai_reason" not in cols:
-            c.execute("ALTER TABLE posts ADD COLUMN ai_reason TEXT")
         if "reward_type" not in cols:
             c.execute("ALTER TABLE posts ADD COLUMN reward_type TEXT")
         if "entry_method" not in cols:
@@ -1099,7 +1091,7 @@ def _reddit_card(r, return_to):
         actions += f'<form method="post" action="/state"><input type="hidden" name="id" value="{html.escape(r["post_id"])}"><input type="hidden" name="return_to" value="{return_value}"><button class="btn btn-secondary btn-sm" name="state" value="ignored">Ignore</button></form>'
     if state != "new":
         actions += f'<form method="post" action="/state"><input type="hidden" name="id" value="{html.escape(r["post_id"])}"><input type="hidden" name="return_to" value="{return_value}"><button class="btn btn-ghost btn-sm" name="state" value="new">Undo</button></form>'
-    open_btn = f'<button class="btn btn-ghost btn-sm" type="button" onclick="copyAndOpen(this, \'{reddit_url}\')">Copy reply + Reddit ↗</button>' if has_reply else f'<a class="btn btn-ghost btn-sm" href="{reddit_url}" target="_blank" rel="noreferrer">Open Reddit ↗</a>'
+    open_btn = f'<a class="btn btn-ghost btn-sm" href="{reddit_url}" target="_blank" rel="noopener noreferrer">Open on Reddit</a>'
     return f'''<article class="card reddit-card"><div class="card-body"><div class="row-between"><span class="badge badge-info">r/{html.escape(r["subreddit"])}</span><span class="badge badge-{badge_variant}">{badge}</span></div><h3>{html.escape(r["title"])}</h3><div class="text-sm muted">{fmt_time(r["created_utc"])} · {r["num_comments"]} comments · u/{html.escape(r["author"])}</div><div class="requirement">{req}</div><details><summary>What the post says</summary><p class="post-text">{html.escape(ellipsis(r["body"], 900))}</p></details><div class="actions">{open_btn}{actions}</div></div></article>'''
 
 
