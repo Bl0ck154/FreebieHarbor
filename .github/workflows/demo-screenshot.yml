@@ -1,0 +1,29 @@
+name: Demo screenshot (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare sample data
+        run: |
+          mkdir -p docs/assets
+          DATA_DIR="$PWD/demo-data" python3 tools/seed_demo.py
+      - name: Start local dashboard
+        run: |
+          DATA_DIR="$PWD/demo-data" PORT=18089 python3 app/hub.py > /tmp/freebieharbor-demo.log 2>&1 &
+          sleep 2
+          curl -fsS http://127.0.0.1:18089/dashboard | grep -q 'Sample data'
+      - name: Capture screenshot
+        run: |
+          google-chrome --headless --disable-gpu --hide-scrollbars --window-size=1440,1000 --screenshot="$PWD/docs/assets/dashboard.png" http://127.0.0.1:18089/dashboard
+          test -s docs/assets/dashboard.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-preview
+          path: docs/assets/dashboard.png
+          retention-days: 2
