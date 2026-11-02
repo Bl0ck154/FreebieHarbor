@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.4.3"
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "giveaways.db")
 POLL_SECONDS = max(300, int(os.environ.get("POLL_SECONDS", "1200")))
@@ -745,9 +745,9 @@ def pagination_html(path, page, pages, total, page_size, params=None):
     return f'''<div class="pagination"><div class="pagination-info">Showing {start}–{end} of {total}</div><div class="pagination-links">{"".join(parts)}</div></div>'''
 
 
-def external_offers_data(page=1, page_size=20, source="all", search=""):
+def external_offers_data(page=1, page_size=20, source="all", search="", view="active"):
     source = source if source in {"all", "gamerpower", "freetokeep", "ggdeals", "alienware", "indiegala"} else "all"
-    where = ["active=1", "user_state != 'ignored'"]
+    where = ["active=0" if view == "history" else "active=1", "user_state != 'ignored'"]
     params = []
     if source != "all":
         where.append("source=?")
@@ -806,6 +806,8 @@ def _external_card(r, return_to):
         badge_variant, badge_text = "success", "Entered"
     elif state == "claimed":
         badge_variant, badge_text = "default", "Claimed"
+    elif not r["active"]:
+        badge_variant, badge_text = "default", "Archived"
     else:
         badge_variant, badge_text = "success", "Live"
     state_actions = ""
@@ -1116,8 +1118,9 @@ def render_dashboard_content(status):
 
 
 def render_offers_content(query):
-    page=_page_number(query); source=_query_text(query,"source","all") or "all"; search=_query_text(query,"q"); rows,total,page,pages=external_offers_data(page=page,page_size=20,source=source,search=search); params={"source":source,"q":search}; return_to=_page_href("/offers",page,params); cards="".join(_external_card(r,return_to) for r in rows) if rows else '<div class="card empty" style="grid-column:1/-1">No offers match these filters.</div>'; source_options=[("all","All sources"),("gamerpower","GamerPower"),("freetokeep","FreeToKeep"),("ggdeals","GG.deals"),("alienware","Alienware Arena")]; options="".join(f'<option value="{v}"{" selected" if source==v else ""}>{label}</option>' for v,label in source_options)
-    return f'''<div class="page"><div class="page-title"><h2>External Offers</h2><form class="search-form" method="get" action="/offers"><input class="input" type="search" name="q" placeholder="Search offers..." value="{html.escape(search, quote=True)}"><input type="hidden" name="source" value="{html.escape(source, quote=True)}"><button class="btn btn-secondary btn-md" type="submit">Search</button></form></div><form class="filters" method="get" action="/offers"><div class="filter-chip">{svg_icon('gift',16)}<span class="text-sm muted">Source:</span><select class="select" name="source" onchange="this.form.submit()">{options}</select></div>{f'<input type="hidden" name="q" value="{html.escape(search, quote=True)}">' if search else ''}</form><div class="results-count">Showing page {page} of {pages} · {total} offer{'' if total==1 else 's'}</div><div class="offer-grid">{cards}</div>{pagination_html('/offers',page,pages,total,20,params)}</div>'''
+    page=_page_number(query); source=_query_text(query,"source","all") or "all"; search=_query_text(query,"q"); view = "history" if _query_text(query,"view") == "history" else "active"; rows,total,page,pages=external_offers_data(page=page,page_size=20,source=source,search=search,view=view); params={"source":source,"q":search,"view":view}; return_to=_page_href("/offers",page,params); cards="".join(_external_card(r,return_to) for r in rows) if rows else '<div class="card empty" style="grid-column:1/-1">No offers match these filters.</div>'; source_options=[("all","All sources"),("gamerpower","GamerPower"),("freetokeep","FreeToKeep"),("ggdeals","GG.deals"),("alienware","Alienware Arena")]; options="".join(f'<option value="{v}"{" selected" if source==v else ""}>{label}</option>' for v,label in source_options)
+    tabs = "".join(f'<a class="btn btn-ghost btn-sm" href="{html.escape(_page_href("/offers",1,{"source":source,"q":search,"view":mode}),quote=True)}">{label}</a>' for mode,label in (("active","Current offers"),("history","History")))
+    return f'''<div class="page"><div class="page-title"><h2>Free game offers</h2><form class="search-form" method="get" action="/offers"><input class="input" type="search" name="q" placeholder="Search offers..." value="{html.escape(search, quote=True)}"><input type="hidden" name="source" value="{html.escape(source, quote=True)}"><input type="hidden" name="view" value="{view}"><button class="btn btn-secondary btn-md" type="submit">Search</button></form></div>{tabs}<form class="filters" method="get" action="/offers"><div class="filter-chip">{svg_icon('gift',16)}<span class="text-sm muted">Source:</span><select class="select" name="source" onchange="this.form.submit()">{options}</select></div><input type="hidden" name="view" value="{view}">{f'<input type="hidden" name="q" value="{html.escape(search, quote=True)}">' if search else ''}</form><div class="results-count">Showing page {page} of {pages} · {total} offer{'' if total==1 else 's'}</div><div class="offer-grid">{cards}</div>{pagination_html('/offers',page,pages,total,20,params)}</div>'''
 
 
 

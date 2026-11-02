@@ -6,6 +6,13 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.4.3 — 2026-11-02
+
+- Add a History filter for archived game offers while keeping current offers easy to find.
+- Add opt-in, dry-run-first migration of legacy GamerPower, FreeToKeep and GG.deals history.
+- Preserve existing current offers and user claim choices; never import Reddit, IndieGala, credentials or raw source payloads.
+- Document a separate, authenticated HTTPS route for existing deployments.
+
 ## v0.4.2 — 2026-11-02
 
 - Add an optional, credential-free rewards exporter for existing SteamSelfGifter and ASF installations.
