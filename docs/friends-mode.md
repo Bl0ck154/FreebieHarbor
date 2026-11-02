@@ -11,7 +11,7 @@ The existing owner-only Steam Farm stays completely separate. Friends accounts d
 - Sanitized public game catalog exported from the existing FreebieHarbor database.
 - Login rate limiting and administrator controls to invite or disable accounts from a dedicated Admin page, with server-only bootstrap of the initial administrator.
 
-Not implemented: Steam account linking, automatic Steam license redemption by the central portal, per-user notifications, account recovery, self-signup or billing.
+Steam OpenID identity linking and a separate ASF connection request are available in the next release. The second Steam/ASF authorization is **not yet** complete, so no automatic licenses are claimed for friends. Per-user notifications, recovery, self-signup and billing remain out of scope.
 
 ## Deployment and invitations
 
@@ -50,3 +50,7 @@ References: https://github.com/Citrinate/FreePackages and https://store.steampow
 ## Next priorities
 
 Invite pilot security review; verified user notifications and recovery; optionally supported account integrations only after confirming platform permissions and secure credential isolation.
+
+## Shared server-side ASF (experimental)
+
+A single, separate ASF process can manage multiple friend bots without a container per friend. Each Friend first verifies their SteamID with Valve, then submits a Steam account login name and explicit opt-in. The system stages a disabled bot configuration; it does not collect a Steam password. Consult [the ASF integration lifecycle](steam-integration.md) before enabling bots.

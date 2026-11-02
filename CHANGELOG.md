@@ -6,6 +6,14 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.6.0 — 2026-11-02
+
+- Add official Steam OpenID identity verification for invited users; verify the assertion with Steam, validate return-to/origin, bind it to the initiating user's session, prevent nonce replay and store only SteamID64.
+- Add per-user explicit opt-in requests for one shared ASF-based free-to-keep pilot. No Steam passwords, Guard codes or cookies are collected by FreebieHarbor.
+- Add a conservative provisioner that stages only disabled, per-user FreePackages bot configs, with five-member pilot cap.
+- Add a separate, resource-capped Friends ASF Compose definition with localhost authenticated IPC and officially versioned ASF/FreePackages components. Steam bot login and account-level license activation are not automatically enabled by this release.
+- Document credential custody, account verification, revocation, update and resource costs.
+
 ## v0.5.1 — 2026-11-02
 
 - Add an administrator-only web page for one-time invitations and member disable actions.

@@ -12,9 +12,11 @@ import time
 from datetime import datetime, timezone
 from http import cookies
 from contextlib import closing
+from urllib.request import Request, urlopen
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit, urlencode
+from urllib.parse import parse_qs, urlsplit, urlencode, urlencode
 
 FRIENDS_DB = Path(os.getenv("FRIENDS_DB", "./friends-data/friends.db"))
 HUB_DB = Path(os.getenv("HUB_DB", "./demo-data/giveaways.db"))
@@ -47,7 +49,10 @@ def init_db():
             password_hash TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             disabled INTEGER NOT NULL DEFAULT 0,
-            is_admin INTEGER NOT NULL DEFAULT 0
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            steam_id TEXT,
+            steam_login TEXT,
+            steam_automation INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS invites (
             token_hash TEXT PRIMARY KEY,
@@ -69,12 +74,29 @@ def init_db():
             updated_at INTEGER NOT NULL,
             PRIMARY KEY(user_id,offer_id)
         );
+        CREATE TABLE IF NOT EXISTS steam_link_requests (
+            state_hash TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS steam_openid_nonces (
+            nonce_hash TEXT PRIMARY KEY,
+            expires_at INTEGER NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
         """)
         for name in ("users","invites"):
             cols = {row[1] for row in conn.execute("PRAGMA table_info("+name+")")}
             if "is_admin" not in cols:
                 conn.execute("ALTER TABLE "+name+" ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+        if "steam_id" not in {row[1] for row in conn.execute("PRAGMA table_info(users)")}:
+            conn.execute("ALTER TABLE users ADD COLUMN steam_id TEXT")
+        user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        if "steam_login" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN steam_login TEXT")
+        if "steam_automation" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN steam_automation INTEGER NOT NULL DEFAULT 0")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS user_steam_id ON users(steam_id)")
 
 
 def digest(value):
@@ -153,10 +175,102 @@ def get_session(raw):
         return None
     with LOCK, database() as conn:
         return conn.execute("""
-            SELECT users.id,users.username,users.is_admin,sessions.csrf,sessions.expires_at
+            SELECT users.id,users.username,users.is_admin,users.steam_id,users.steam_login,users.steam_automation,sessions.csrf,sessions.expires_at
             FROM sessions JOIN users ON users.id=sessions.user_id
             WHERE sessions.token_hash=? AND sessions.expires_at>? AND users.disabled=0
         """, (digest(raw),int(time.time()))).fetchone()
+
+
+STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login"
+STEAM_OPENID_CLAIM = "http://specs.openid.net/auth/2.0/identifier_select"
+
+
+def steam_link_begin(user_id):
+    token = secrets.token_urlsafe(32)
+    expires = int(time.time()) + 600
+    with LOCK, database() as conn:
+        conn.execute("DELETE FROM steam_link_requests WHERE expires_at < ?", (int(time.time()),))
+        conn.execute("INSERT INTO steam_link_requests VALUES(?,?,?)", (digest(token),user_id,expires))
+    return_to = PUBLIC_ORIGIN + "/steam/callback?state=" + token
+    params = {
+        "openid.ns": "http://specs.openid.net/auth/2.0",
+        "openid.mode": "checkid_setup",
+        "openid.return_to": return_to,
+        "openid.realm": PUBLIC_ORIGIN + "/",
+        "openid.identity": STEAM_OPENID_CLAIM,
+        "openid.claimed_id": STEAM_OPENID_CLAIM,
+    }
+    return STEAM_OPENID_ENDPOINT + "?" + urlencode(params)
+
+
+def verify_steam_openid(user_id, values):
+    """Verify signed OpenID assertion with Valve; never trust callback contents alone."""
+    if any(len(items)!=1 for items in values.values()):
+        return False
+    get = lambda k: values.get(k, [""])[0]
+    token = get("state")
+    if not 32 <= len(token) <= 128 or not re.fullmatch(r"[A-Za-z0-9_-]+",token):
+        return False
+    if get("openid.mode") != "id_res":
+        return False
+    if get("openid.op_endpoint") != STEAM_OPENID_ENDPOINT:
+        return False
+    expected_return = PUBLIC_ORIGIN + "/steam/callback?state=" + token
+    if get("openid.return_to") != expected_return:
+        return False
+    claim = get("openid.claimed_id")
+    match = re.fullmatch(r"https?://steamcommunity[.]com/openid/id/(7656119[0-9]{10})", claim)
+    if not match or get("openid.identity") != claim:
+        return False
+    signed = set(get("openid.signed").split(","))
+    if not {"return_to", "claimed_id", "identity", "response_nonce", "op_endpoint"} <= signed:
+        return False
+    nonce = get("openid.response_nonce")
+    if len(nonce) < 24 or len(nonce) > 180 or not nonce.endswith(tuple("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")):
+        return False
+    try:
+        stamp = datetime.strptime(nonce[:20], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if abs(time.time() - stamp.timestamp()) > 600:
+            return False
+    except ValueError:
+        return False
+    now = int(time.time())
+    with LOCK, database() as conn:
+        state = conn.execute("SELECT user_id,expires_at FROM steam_link_requests WHERE state_hash=?", (digest(token),)).fetchone()
+        if not state or state["user_id"] != user_id or state["expires_at"] < now:
+            return False
+        if conn.execute("SELECT 1 FROM steam_openid_nonces WHERE nonce_hash=?", (digest(nonce),)).fetchone():
+            return False
+    params = {k:v[0] for k,v in values.items() if k.startswith("openid.")}
+    params["openid.mode"] = "check_authentication"
+    try:
+        request = Request(STEAM_OPENID_ENDPOINT,
+                          data=urlencode(params).encode("ascii"),
+                          headers={"Content-Type":"application/x-www-form-urlencoded"},
+                          method="POST")
+        # Steam's endpoint is hard-coded HTTPS; no user-controlled destination.
+        with urlopen(request,timeout=8) as response:
+            if response.status != 200:
+                return False
+            reply = response.read(4096).decode("utf-8","replace")
+        if "is_valid:true" not in reply.splitlines():
+            return False
+    except (OSError,ValueError):
+        return False
+    with LOCK, database() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        state = conn.execute("SELECT user_id,expires_at FROM steam_link_requests WHERE state_hash=?", (digest(token),)).fetchone()
+        if not state or state["user_id"] != user_id or state["expires_at"] < int(time.time()):
+            return False
+        conn.execute("DELETE FROM steam_openid_nonces WHERE expires_at < ?",(int(time.time()),))
+        try:
+            conn.execute("INSERT INTO steam_openid_nonces VALUES(?,?)", (digest(nonce),now+1200))
+            conn.execute("UPDATE users SET steam_id=?,steam_login=NULL,steam_automation=0 WHERE id=?", (match.group(1), user_id))
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            return False
+        conn.execute("DELETE FROM steam_link_requests WHERE state_hash=?", (digest(token),))
+        return True
 
 
 def logout(raw):
@@ -351,6 +465,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200,page("Join",form))
         if not user:
             return self.redirect("/login")
+        if path.path == "/steam/callback":
+            if len(path.query)>4096:
+                return self.respond(403,"Invalid Steam callback","text/plain")
+            try:
+                query = parse_qs(path.query,keep_blank_values=True,max_num_fields=40)
+            except ValueError:
+                return self.respond(403,"Invalid Steam callback","text/plain")
+            if not verify_steam_openid(user["id"],query):
+                return self.respond(403,"Steam identity verification failed","text/plain")
+            return self.redirect("/account")
         if path.path in ("/","/offers"):
             query = parse_qs(path.query)
             text = query.get("q",[""])[0][:70]
@@ -377,16 +501,35 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(403,"Admin access required","text/plain")
             return self.respond(200,page("Admin",admin_content(user),user["username"],True))
         if path.path == "/steam-setup":
-            text = ("<h1>Free-to-keep setup</h1><div class='card'>"
-                    "<p>Use your own ASF installation and the FreePackages plugin. "
-                    "No Steam login is connected to this portal.</p>"
-                    "<p>Suggested filters: NoCostOnly, IgnoreFreeWeekends and PauseFreePackagesWhilePlaying.</p>"
-                    "<p><a href='https://github.com/Citrinate/FreePackages'>Install FreePackages</a></p>"
-                    "<p>Steam restricts automated activity. Use third-party tools at your own account risk.</p></div>")
+            verified = user["steam_id"]
+            status = ("Request recorded for "+html.escape(user["steam_login"] or "")+
+                      ". Awaiting individual ASF authorization." if user["steam_automation"] else
+                      "No ASF account activation is enabled yet.")
+            fields = ("<form method='post' action='/steam/automation'>"+hidden("csrf",user["csrf"])+
+                      "<label>Steam account login name (not password)</label>"
+                      "<input name='steam_login' autocomplete='off' maxlength='64' required>"
+                      "<label><input type='checkbox' name='consent' value='yes' required> "
+                      "I understand ASF will need a separate Steam authorization and may activate free packages.</label>"
+                      "<button>Request ASF connection</button></form>"+
+                      "<form method='post' action='/steam/automation'>"+hidden("csrf",user["csrf"])+
+                      "<button name='action' value='disable'>Cancel pending setup request</button></form>")
+            if not verified:
+                fields = "<p>First verify SteamID through the Account page.</p>"
+            text = ("<h1>Free-to-keep setup</h1><div class='card'><p>Verified SteamID: "+
+                    html.escape(verified or "not linked")+"</p><p>"+status+"</p>"+fields+
+                    "<p>One shared ASF service can handle multiple bot accounts with separate bot configurations. "
+                    "No Steam password or Steam Guard code is collected here. Steam identity verification "
+                    "alone does not activate licenses; a separate Steam session is needed.</p>"
+                    "<p><a href='https://github.com/Citrinate/FreePackages'>FreePackages documentation</a></p></div>")
             return self.respond(200,page("Steam setup",text,user["username"],bool(user["is_admin"])))
         if path.path == "/account":
-            body = f'''<h1>Account</h1><div class="card"><p>Signed in as <b>{html.escape(user["username"])}</b></p>
-<p class="muted">Steam account linking and automatic claiming are not enabled. You can track offers without sharing your Steam password.</p></div>'''
+            steam_status = ("Verified SteamID: "+html.escape(user["steam_id"])) if user["steam_id"] else "No Steam account linked"
+            body = (f'<h1>Account</h1><div class="card"><p>Signed in as <b>{html.escape(user["username"])}</b></p>'
+                    f'<p>{steam_status}</p>'
+                    '<p class="muted">Steam sign-in proves account ownership but does NOT authorize ASF license activation. '
+                    'FreebieHarbor never asks for your Steam password or Steam Guard codes.</p>'
+                    '<form method="post" action="/steam/link">'+hidden("csrf",user["csrf"])+
+                    '<button>Verify Steam identity</button></form></div>')
             return self.respond(200,page("Account",body,user["username"],bool(user["is_admin"])))
         return self.respond(404,"Not found","text/plain")
 
@@ -422,15 +565,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(401,page("Login","<h1>Invalid username or password</h1><a href='/login'>Retry</a>"))
             FAILED_LOGINS.pop(key,None)
             raw,_csrf = result
-            return self.redirect("/offers", "fh_friend="+raw+"; Path=/; HttpOnly; SameSite=Strict"+("; Secure" if COOKIE_SECURE else ""))
+            return self.redirect("/offers", "fh_friend="+raw+"; Path=/; HttpOnly; SameSite=Lax"+("; Secure" if COOKIE_SECURE else ""))
         user = self.session()
         if not user:
             return self.respond(401,"Sign in required","text/plain")
         if path == "/logout":
             logout(self.raw_session())
-            return self.redirect("/login","fh_friend=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"+("; Secure" if COOKIE_SECURE else ""))
+            return self.redirect("/login","fh_friend=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"+("; Secure" if COOKIE_SECURE else ""))
         if not hmac.compare_digest(item("csrf"),user["csrf"]):
             return self.respond(403,"Invalid CSRF token","text/plain")
+        if path == "/steam/automation":
+            if item("action") == "disable":
+                with LOCK, database() as conn:
+                    conn.execute("UPDATE users SET steam_automation=0 WHERE id=?",(user["id"],))
+                return self.redirect("/steam-setup")
+            name = item("steam_login")
+            if not user["steam_id"] or item("consent") != "yes" or not re.fullmatch(r"[A-Za-z0-9_]{3,64}",name):
+                return self.respond(400,"Verified Steam account and explicit consent required","text/plain")
+            with LOCK, database() as conn:
+                conn.execute("UPDATE users SET steam_login=?,steam_automation=1 WHERE id=?",(name,user["id"]))
+            return self.redirect("/steam-setup")
+        if path == "/steam/link":
+            url = steam_link_begin(user["id"])
+            return self.redirect(url)
         if path == "/admin/invite":
             if not user["is_admin"]:
                 return self.respond(403,"Admin access required","text/plain")

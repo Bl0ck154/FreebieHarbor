@@ -1,0 +1,28 @@
+# Optional ONE ASF process for several Friends bots; completely separate from owner Steam Farm.
+# Never expose port 1246 to the public web or mount the owner's ASF config directory.
+name: freebieharbor-friends-asf
+services:
+  asf:
+    image: ghcr.io/justarchinet/archisteamfarm:6.3.11.7@sha256:b6e0f6251c745f04e2a359aab0033f1487aec2ba204141a5abaa3f5af2696e10
+    container_name: freebieharbor-friends-asf
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1246:1242"
+    volumes:
+      - type: bind
+        source: ${FRIENDS_ASF_CONFIG:?Set private Friends ASF config directory}
+        target: /app/config
+      - type: bind
+        source: ${FRIENDS_ASF_PLUGINS:?Set private Friends ASF plugin directory}
+        target: /app/plugins/custom/FreePackages
+        read_only: true
+    mem_limit: 384m
+    cpus: 0.4
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "3m"
+        max-file: "2"
