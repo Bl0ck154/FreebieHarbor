@@ -1156,6 +1156,7 @@ def _external_card(r, return_to):
     facts_html = ''.join(facts)
     image = f'<img class="offer-image" src="{image_url}" alt="" loading="lazy" onerror="this.style.display=\'none\'">' if image_url else '<div class="offer-image placeholder">🎁</div>'
     if source == "demo":
+        badge_variant, badge_text = "default", "Sample"
         covers = [
             ("linear-gradient(130deg,#1e40af,#0891b2)", "🚀"),
             ("linear-gradient(130deg,#7c3aed,#db2777)", "✨"),
@@ -1327,7 +1328,7 @@ def render_shell(active, content, status=None, title="FreebieHarbor"):
     nav_html += f'<a class="nav-link" href="https://github.com/kernelcoffee/SteamSelfGifter" target="_blank" rel="noopener noreferrer">{svg_icon("external")}<span>SteamSelfGifter</span></a>'
     nav_html += f'<a class="nav-link" href="https://github.com/JustArchiNET/ArchiSteamFarm" target="_blank" rel="noopener noreferrer">{svg_icon("external")}<span>ASF</span></a>'
     moon = svg_icon("moon", 20); sun = svg_icon("sun", 20)
-    return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>{html.escape(title)}</title><style>{UI_CSS}</style><script>{UI_JS}</script></head><body><header class="header"><h1>FreebieHarbor</h1><div class="header-right"><div class="status-item" title="{html.escape(session_title, quote=True)}">{session_icon}<span class="status-text">{'Local'}</span></div><div class="status-item"><span class="status-green">{svg_icon('activity',16)}</span><span class="status-text">Polling</span></div><button class="icon-button" type="button" onclick="toggleTheme()" aria-label="Toggle theme"><span id="theme-moon">{moon}</span><span id="theme-sun" style="display:none">{sun}</span></button></div></header><div class="layout"><aside class="sidebar"><nav><div class="nav-list">{nav_html}</div></nav></aside><main class="main">{content}</main></div></body></html>'''
+    return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>{html.escape(title)}</title><style>{UI_CSS}</style><script>{UI_JS}</script></head><body><header class="header"><h1>⚓ FreebieHarbor</h1><div class="header-right"><div class="status-item" title="{html.escape(session_title, quote=True)}">{session_icon}<span class="status-text">{'Local'}</span></div><div class="status-item"><span class="status-green">{svg_icon('activity',16)}</span><span class="status-text">{"Demo" if get_meta("demo_mode") == "1" else "Polling"}</span></div><button class="icon-button" type="button" onclick="toggleTheme()" aria-label="Toggle theme"><span id="theme-moon">{moon}</span><span id="theme-sun" style="display:none">{sun}</span></button></div></header><div class="layout"><aside class="sidebar"><nav><div class="nav-list">{nav_html}</div></nav></aside><main class="main">{content}</main></div></body></html>'''
 
 
 def _stat_card(label, value, color="", sub=""):
@@ -1384,7 +1385,14 @@ def render_dashboard_content(status):
     status_line = " · ".join(html.escape(k)+": "+str(v) for k, v in sorted(sources.items())) or "First update pending"
     reddit_note = "Reddit adapter connected" if PUBLISHER_BASE else "Reddit requires an optional compatible Publisher API"
     demo_note = '<div class="status-banner warning">Sample data: fictional offers for UI preview.</div>' if get_meta("demo_mode") == "1" else ""
-    return f'''<div class="page"><div class="page-title"><h2>Free game radar</h2><form method="post" action="/refresh"><button class="btn btn-primary btn-md">Refresh now</button></form></div>{demo_note}<div class="stats-grid">{_stat_card("Live offers",total,"blue")}{_stat_card("Reddit posts",counts["open"],"green")}{_stat_card("SteamGifts entries",rewards.get("entered","—"),"teal")}{_stat_card("SteamGifts wins",rewards.get("wins","—"),"purple")}</div><div class="card"><div class="card-body"><b>Source health</b><p class="text-sm muted">{status_line}</p><p class="text-sm muted">{reddit_note}</p></div></div><div class="page-title"><h2>New offers</h2><a class="btn btn-ghost btn-sm" href="/offers">Browse all</a></div><div class="offer-grid">{cards}</div></div>'''
+    demo_enabled = get_meta("demo_mode") == "1"
+    refresh_action = (
+        '<span class="badge badge-info">Offline preview</span>'
+        if demo_enabled else
+        '<form method="post" action="/refresh"><button class="btn btn-primary btn-md">Refresh now</button></form>'
+    )
+    offer_label = "Sample offers" if demo_enabled else "Live offers"
+    return f'''<div class="page"><div class="page-title"><h2>Free game radar</h2>{refresh_action}</div>{demo_note}<div class="stats-grid">{_stat_card(offer_label,total,"blue")}{_stat_card("Reddit posts",counts["open"],"green")}{_stat_card("SteamGifts entries",rewards.get("entered","—"),"teal")}{_stat_card("SteamGifts wins",rewards.get("wins","—"),"purple")}</div><div class="card"><div class="card-body"><b>Source health</b><p class="text-sm muted">{status_line}</p><p class="text-sm muted">{reddit_note}</p></div></div><div class="page-title"><h2>New offers</h2><a class="btn btn-ghost btn-sm" href="/offers">Browse all</a></div><div class="offer-grid">{cards}</div></div>'''
 
 
 def render_offers_content(query):
