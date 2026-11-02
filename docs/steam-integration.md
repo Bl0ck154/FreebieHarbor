@@ -60,3 +60,7 @@ A future friend logout/revocation must stop its bot, revoke its session, and saf
 One Friends user may link up to five distinct SteamIDs. Steam OpenID proves each identity separately; the same SteamID cannot be linked to two Friends users. The database now stores `steam_accounts(id,user_id,steam_id,login,requested)`, and migration copies a previously linked SteamID from the old `users.steam_id` fields once without deleting those legacy fields.
 
 The proof-of-concept bot provisioner stages `fh_account_<id>.json` for every requested linked Steam account. A cancelled request disables its matching config only; it never affects another account owned by the same or a different user. Until secure Steam Guard/QR login and session revocation are built, no bot is auto-enabled. The pilot has a maximum of five *requested* ASF bots globally, even though the portal allows additional verified accounts to remain unrequested.
+
+## QR onboarding: implementation and validation status
+
+See [Steam QR onboarding engineering status](steam-qr-onboarding.md) for the confirmed Headless ASF limitation, the researched SteamClient QR approach and the required session-import, SteamID attestation, rollback and revocation gates. The Friends portal does **not** yet support full QR onboarding or verified automatic Steam license acquisition.
