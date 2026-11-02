@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "giveaways.db")
 PUBLISHER_BASE = os.environ.get("PUBLISHER_BASE", "").rstrip("/")

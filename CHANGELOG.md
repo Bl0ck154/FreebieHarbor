@@ -6,6 +6,12 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.3.1 — 2026-11-02
+
+- Public GHCR image publishing for stable release tags, with source version checks.
+- Documented prebuilt image installation and persistent Docker volume upgrades.
+- Linux amd64 prebuilt image; local Compose builds remain available for other supported architectures.
+
 ## v0.3.0 — 2026-11-02
 
 - Optional read-only ASF FreePackages counters and SteamGifts win history.
