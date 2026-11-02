@@ -6,6 +6,12 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.5.1 — 2026-11-02
+
+- Add an administrator-only web page for one-time invitations and member disable actions.
+- Administrator role can only be bootstrapped from the server CLI; invitations made in the web interface create regular users.
+- Provide a member Steam setup page explaining independently managed ASF/FreePackages and account risks.
+
 ## v0.5.0 — 2026-11-02
 
 - Add a separate invitation-only Friends portal with independent user profiles, sessions and offer states.

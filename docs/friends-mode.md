@@ -9,7 +9,7 @@ The existing owner-only Steam Farm stays completely separate. Friends accounts d
 - One-time invitations administered locally.
 - Independent profiles, password hashing with scrypt, random session cookies, CSRF checks and individual offer states.
 - Sanitized public game catalog exported from the existing FreebieHarbor database.
-- Login rate limiting and administrator controls to revoke accounts and their sessions.
+- Login rate limiting and administrator controls to invite or disable accounts from a dedicated Admin page, with server-only bootstrap of the initial administrator.
 
 Not implemented: Steam account linking, automatic Steam license redemption by the central portal, per-user notifications, account recovery, self-signup or billing.
 
@@ -27,7 +27,7 @@ To create a single-use invitation:
 
     docker exec freebieharbor-friends python3 /app/tools/friends_admin.py invite --hours 48
 
-The command prints a sign-up URL and a separate invite code. Send the code privately. It must never appear in a URL or public issue. Disable accounts and revoke sessions with:
+For the first administrator, use the same command with --admin. Only a server administrator can create this special invite. After the administrator signs in, the Admin page can create normal member invitations and disable accounts without command-line access. The command prints a sign-up URL and a separate invite code. Send the code privately. It must never appear in a URL or public issue. Disable accounts and revoke sessions with:
 
     docker exec freebieharbor-friends python3 /app/tools/friends_admin.py disable username
 

@@ -46,13 +46,15 @@ def init_db():
             salt TEXT NOT NULL,
             password_hash TEXT NOT NULL,
             created_at INTEGER NOT NULL,
-            disabled INTEGER NOT NULL DEFAULT 0
+            disabled INTEGER NOT NULL DEFAULT 0,
+            is_admin INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS invites (
             token_hash TEXT PRIMARY KEY,
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
-            claimed_by INTEGER REFERENCES users(id)
+            claimed_by INTEGER REFERENCES users(id),
+            is_admin INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS sessions (
             token_hash TEXT PRIMARY KEY,
@@ -69,6 +71,10 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
         """)
+        for name in ("users","invites"):
+            cols = {row[1] for row in conn.execute("PRAGMA table_info("+name+")")}
+            if "is_admin" not in cols:
+                conn.execute("ALTER TABLE "+name+" ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
 
 
 def digest(value):
@@ -79,15 +85,15 @@ def hash_password(password, salt):
     return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=2**14, r=8, p=1).hex()
 
 
-def create_invite(ttl_hours=48):
+def create_invite(ttl_hours=48, is_admin=False):
     if not 1 <= int(ttl_hours) <= 168:
         raise ValueError("Invite expiry must be 1-168 hours")
     token = secrets.token_urlsafe(32)
     now = int(time.time())
     with LOCK, database() as conn:
         conn.execute(
-            "INSERT INTO invites VALUES(?,?,?,NULL)",
-            (digest(token), now, now+int(ttl_hours)*3600),
+            "INSERT INTO invites(token_hash,created_at,expires_at,claimed_by,is_admin) VALUES(?,?,?,NULL,?)",
+            (digest(token), now, now+int(ttl_hours)*3600, 1 if is_admin else 0),
         )
     return token
 
@@ -102,15 +108,15 @@ def register(invite_token, username, password):
     with LOCK, database() as conn:
         conn.execute("BEGIN IMMEDIATE")
         invitation = conn.execute(
-            "SELECT claimed_by,expires_at FROM invites WHERE token_hash=?",
+            "SELECT claimed_by,expires_at,is_admin FROM invites WHERE token_hash=?",
             (digest(invite_token),),
         ).fetchone()
         if not invitation or invitation["claimed_by"] is not None or invitation["expires_at"] < now:
             return False
         try:
             cursor = conn.execute(
-                "INSERT INTO users(username,salt,password_hash,created_at) VALUES(?,?,?,?)",
-                (username,salt,hashed,now),
+                "INSERT INTO users(username,salt,password_hash,created_at,is_admin) VALUES(?,?,?,?,?)",
+                (username,salt,hashed,now,invitation["is_admin"]),
             )
             conn.execute(
                 "UPDATE invites SET claimed_by=? WHERE token_hash=? AND claimed_by IS NULL",
@@ -147,7 +153,7 @@ def get_session(raw):
         return None
     with LOCK, database() as conn:
         return conn.execute("""
-            SELECT users.id,users.username,sessions.csrf,sessions.expires_at
+            SELECT users.id,users.username,users.is_admin,sessions.csrf,sessions.expires_at
             FROM sessions JOIN users ON users.id=sessions.user_id
             WHERE sessions.token_hash=? AND sessions.expires_at>? AND users.disabled=0
         """, (digest(raw),int(time.time()))).fetchone()
@@ -226,10 +232,14 @@ def safe_link(url):
         return "#"
 
 
-def page(title, body, username=None):
+def page(title, body, username=None, is_admin=False):
     signed = bool(username)
     nav = ('<a href="/offers">Games</a><a href="/account">Account</a>'
            '<form method="post" action="/logout"><button>Sign out</button></form>') if signed else ''
+    if signed and is_admin:
+        nav = '<a href="/admin">Admin</a>' + nav
+    if signed:
+        nav = '<a href="/steam-setup">Steam setup</a>' + nav
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{html.escape(title)} · FreebieHarbor</title>
 <style>
@@ -247,6 +257,24 @@ button{{cursor:pointer;background:#7bb6fa;color:#07172a;font-weight:700}}label{{
 
 def hidden(name, value):
     return f'<input type="hidden" name="{name}" value="{html.escape(value,quote=True)}">'
+
+
+def admin_content(user, token=None):
+    if not user["is_admin"]:
+        return ""
+    with LOCK, database() as db:
+        members = list(db.execute("SELECT username,disabled FROM users ORDER BY username"))
+    listing = ""
+    for member in members:
+        name = member["username"]
+        listing += "<div class='card'><b>"+html.escape(name)+"</b>"
+        if member["disabled"]:
+            listing += " (disabled)"
+        elif name != user["username"]:
+            listing += "<form method='post' action='/admin/disable'>"+hidden("csrf",user["csrf"])+hidden("username",name)+"<button>Disable</button></form>"
+        listing += "</div>"
+    created = ("<div class='card'><p>One-time invitation code:</p><code>"+html.escape(token)+"</code><p>Signup page: "+html.escape(PUBLIC_ORIGIN+"/signup")+"</p></div>") if token else ""
+    return "<h1>Admin</h1><p>Create a private invite, valid for 48 hours.</p><form method='post' action='/admin/invite'>"+hidden("csrf",user["csrf"])+"<button>Create invite</button></form>"+created+"<h2>Members</h2>"+listing
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -343,11 +371,23 @@ class Handler(BaseHTTPRequestHandler):
                     'Free-to-keep offers require manual redemption in Steam; no Steam account is connected.</p>'
                     f'<form method="get" action="/offers"><input name="q" placeholder="Search games" value="{html.escape(text,quote=True)}">'
                     '<button>Search</button></form><div class="grid">'+''.join(cards)+'</div>')
-            return self.respond(200,page("Games",body,user["username"]))
+            return self.respond(200,page("Games",body,user["username"],bool(user["is_admin"])))
+        if path.path == "/admin":
+            if not user["is_admin"]:
+                return self.respond(403,"Admin access required","text/plain")
+            return self.respond(200,page("Admin",admin_content(user),user["username"],True))
+        if path.path == "/steam-setup":
+            text = ("<h1>Free-to-keep setup</h1><div class='card'>"
+                    "<p>Use your own ASF installation and the FreePackages plugin. "
+                    "No Steam login is connected to this portal.</p>"
+                    "<p>Suggested filters: NoCostOnly, IgnoreFreeWeekends and PauseFreePackagesWhilePlaying.</p>"
+                    "<p><a href='https://github.com/Citrinate/FreePackages'>Install FreePackages</a></p>"
+                    "<p>Steam restricts automated activity. Use third-party tools at your own account risk.</p></div>")
+            return self.respond(200,page("Steam setup",text,user["username"],bool(user["is_admin"])))
         if path.path == "/account":
             body = f'''<h1>Account</h1><div class="card"><p>Signed in as <b>{html.escape(user["username"])}</b></p>
 <p class="muted">Steam account linking and automatic claiming are not enabled. You can track offers without sharing your Steam password.</p></div>'''
-            return self.respond(200,page("Account",body,user["username"]))
+            return self.respond(200,page("Account",body,user["username"],bool(user["is_admin"])))
         return self.respond(404,"Not found","text/plain")
 
     def do_POST(self):
@@ -391,6 +431,24 @@ class Handler(BaseHTTPRequestHandler):
             return self.redirect("/login","fh_friend=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"+("; Secure" if COOKIE_SECURE else ""))
         if not hmac.compare_digest(item("csrf"),user["csrf"]):
             return self.respond(403,"Invalid CSRF token","text/plain")
+        if path == "/admin/invite":
+            if not user["is_admin"]:
+                return self.respond(403,"Admin access required","text/plain")
+            token = create_invite(48)
+            return self.respond(200,page("Invitation",admin_content(user,token),user["username"],True))
+        if path == "/admin/disable":
+            if not user["is_admin"]:
+                return self.respond(403,"Admin access required","text/plain")
+            name = item("username").strip().lower()
+            if not USERNAME_RE.fullmatch(name) or name == user["username"]:
+                return self.respond(400,"Invalid username","text/plain")
+            with LOCK, database() as conn:
+                member = conn.execute("SELECT id FROM users WHERE username=?",(name,)).fetchone()
+                if not member:
+                    return self.respond(404,"Unknown member","text/plain")
+                conn.execute("UPDATE users SET disabled=1 WHERE id=?",(member["id"],))
+                conn.execute("DELETE FROM sessions WHERE user_id=?",(member["id"],))
+            return self.redirect("/admin")
         if path == "/state":
             if not update_offer_state(user["id"],item("offer_id"),item("state")):
                 return self.respond(400,"Invalid offer state","text/plain")

@@ -2,7 +2,7 @@ FROM python:3.13-alpine
 LABEL org.opencontainers.image.title="FreebieHarbor" \
       org.opencontainers.image.description="Self-hosted PC game giveaway radar" \
       org.opencontainers.image.source="https://github.com/Bl0ck154/FreebieHarbor" \
-      org.opencontainers.image.version="0.5.0" \
+      org.opencontainers.image.version="0.5.1" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 RUN addgroup -S app && adduser -S -G app app && mkdir -p /data /friends-data && chown app:app /data /friends-data

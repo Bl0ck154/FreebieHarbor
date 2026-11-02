@@ -16,13 +16,14 @@ def main():
     sub = parser.add_subparsers(dest="command",required=True)
     invite = sub.add_parser("invite",help="Create a single-use invite")
     invite.add_argument("--hours",type=int,default=48)
+    invite.add_argument("--admin",action="store_true",help="Bootstrap an owner administrator")
     sub.add_parser("list-users",help="Show usernames and account states")
     disable = sub.add_parser("disable",help="Disable one profile and revoke sessions")
     disable.add_argument("username")
     args = parser.parse_args()
     portal.init_db()
     if args.command == "invite":
-        token = portal.create_invite(args.hours)
+        token = portal.create_invite(args.hours,is_admin=args.admin)
         # One-time secret printed only to the admin terminal, never logged by HTTP server.
         print("Sign-up page:", portal.PUBLIC_ORIGIN + "/signup")
         print("One-time invitation code:", token)
