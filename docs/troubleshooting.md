@@ -40,3 +40,11 @@ No. FreebieHarbor tracks offers, manual actions, and optional external statistic
     DATA_DIR=./demo-data PORT=8080 python3 app/hub.py
 
 This shows clearly labeled fictional offers and disables network polling. The seed script refuses to overwrite an existing database.
+
+## How do I run it without building a Docker image?
+
+Use the public `ghcr.io/bl0ck154/freebieharbor:v0.3.1` image on Linux amd64. The README shows a complete `docker run` command with a local-only port and persistent volume. For ARM devices, use the source Compose build until a native image is published.
+
+## Does GHCR publishing use my server?
+
+No. Tagged images are built on GitHub-hosted runners by the repository's release workflow. The production Steam Farm is separate and unchanged.

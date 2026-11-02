@@ -11,17 +11,44 @@ FreebieHarbor collects free-game offers in a local searchable dashboard. It keep
 
 This is the public 0.x release of a standalone dashboard extracted from a private Steam automation stack. It does not automatically enter giveaways.
 
-## Quick start
+## Install
+
+### Option A — Prebuilt Docker image (Linux amd64)
+
+No cloning or local image build required. The release image is [public on GHCR](https://github.com/users/Bl0ck154/packages/container/package/freebieharbor).
+
+    docker volume create freebieharbor-data
+    docker run -d --name freebieharbor --restart unless-stopped \
+      -p 127.0.0.1:18081:8080 \
+      -v freebieharbor-data:/data \
+      ghcr.io/bl0ck154/freebieharbor:v0.3.1
+
+Open **http://127.0.0.1:18081**. Docker stores the SQLite data in a named volume, so replacing the container does not erase the local history. The default image has no Steam login, AI API, Telegram alerts or optional provider connectors configured.
+
+To upgrade an installation made with Option A, pull the new tagged image and replace the container while reusing the same volume. For example, replace the tag in the command above after:
+
+    docker pull ghcr.io/bl0ck154/freebieharbor:v0.3.1
+    docker stop freebieharbor && docker rm freebieharbor
+
+Use the new published version tag in the final `docker run` command. The `:latest` tag also tracks the latest stable release, but a versioned tag is recommended for reproducibility.
+
+### Option B — Build locally with Docker Compose
+
+This works with other architectures supported by the Python base image, such as Linux arm64:
 
     git clone https://github.com/Bl0ck154/FreebieHarbor.git
     cd FreebieHarbor
     docker compose up -d
 
-Open http://127.0.0.1:18081 on your server. The port is intentionally localhost-only. From another computer:
+The Compose configuration binds the host port to localhost and provides optional Telegram, SteamGifts and ASF integrations through local environment variables and separate read-only volume overlays.
+
+### Connecting from another computer
+
+For either option the dashboard is intentionally bound to the server's loopback interface. From your laptop or desktop, connect through SSH:
 
     ssh -L 18081:127.0.0.1:18081 user@your-server
 
-Then visit http://127.0.0.1:18081.
+Then open **http://127.0.0.1:18081** in your browser. Do not forward the unauthenticated dashboard directly onto the public internet.
 
 ## Dashboard preview
 
