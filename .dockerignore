@@ -11,3 +11,4 @@ __pycache__
 demo-data
 exports
 friends-public-data
+tools/steam-qr/node_modules
