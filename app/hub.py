@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -27,6 +27,15 @@ GGDEALS_FREEBIES_FEED = "https://gg.deals/news/pc/freebies/feed/"
 ALIENWARE_FORUM_URL = "https://www.alienwarearena.com/forums/board/438/contest-and-giveaways-global"
 INDIEGALA_WORKER = os.environ.get("INDIEGALA_WORKER", "").rstrip("/")
 EXTERNAL_USER_AGENT = "FreebieHarbor/0.1 (self-hosted)"
+NOTIFY_NEW_OFFERS = os.environ.get("NOTIFY_NEW_OFFERS", "false").lower() in {"true", "1", "yes"}
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+ALLOWED_HOSTS = {
+    host.strip().lower() for host in
+    os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,::1").split(",")
+    if host.strip()
+}
+
 SUBREDDITS = [
     "steam_giveaway",
     "pcgiveaways",
@@ -108,6 +117,10 @@ def init_db():
           raw_json TEXT NOT NULL DEFAULT '{}'
         );
         CREATE INDEX IF NOT EXISTS external_offers_source_seen ON external_offers(source, last_seen DESC);
+        CREATE TABLE IF NOT EXISTS offer_notifications (
+          offer_id TEXT PRIMARY KEY,
+          seen_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
         cols = {row[1] for row in c.execute("PRAGMA table_info(posts)").fetchall()}
@@ -374,12 +387,25 @@ def _parse_external_time(value):
 
 def safe_public_url(value):
     value = str(value or "").strip()
+    if len(value) > 2048 or any(ord(ch) < 32 for ch in value):
+        return ""
     try:
         parsed = urlparse(value)
         if parsed.scheme in {"https", "http"} and parsed.hostname and not parsed.username and not parsed.password:
             return value
     except ValueError:
         pass
+    return ""
+
+
+def safe_reddit_url(value):
+    value = str(value or "").strip()
+    if (value.startswith("/r/") and not value.startswith("//")
+            and "\\" not in value and all(ord(ch) >= 32 for ch in value)):
+        return "https://www.reddit.com" + value
+    url = safe_public_url(value)
+    if url and urlparse(url).hostname in {"reddit.com", "www.reddit.com", "old.reddit.com"}:
+        return url
     return ""
 
 
@@ -770,6 +796,92 @@ def poll_external_sources():
     return counts
 
 
+def _send_telegram(text):
+    """Single outbound request; never include bot token in errors or logs."""
+    data = urlencode({
+        "chat_id": TELEGRAM_CHAT_ID, "text": text,
+        "parse_mode": "HTML", "disable_web_page_preview": "true",
+    }).encode("utf-8")
+    request = Request(
+        "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage",
+        data=data, method="POST",
+    )
+    try:
+        with urlopen(request, timeout=12) as response:
+            payload = json.load(response)
+        if not payload.get("ok"):
+            raise RuntimeError("Telegram rejected the message")
+    except HTTPError as exc:
+        raise RuntimeError("Telegram HTTP " + str(exc.code)) from None
+    except (URLError, TimeoutError):
+        raise RuntimeError("Telegram network error") from None
+
+
+def notify_new_offers():
+    """No first-run alert flood, and no repeated alerts across restarts."""
+    if not (NOTIFY_NEW_OFFERS and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
+        return {"enabled": False}
+    with _db_lock, db() as conn:
+        ready = conn.execute(
+            "SELECT value FROM meta WHERE key='offer_notifications_initialized'"
+        ).fetchone()
+        if ready is None:
+            conn.execute(
+                "INSERT OR IGNORE INTO offer_notifications(offer_id, seen_at) "
+                "SELECT offer_id, ? FROM external_offers", (now_iso(),)
+            )
+            conn.execute(
+                "INSERT INTO meta(key,value) VALUES('offer_notifications_initialized','1')"
+            )
+            return {"enabled": True, "baseline": True}
+        rows = conn.execute("""
+            SELECT e.offer_id,e.title,e.url,e.provider
+            FROM external_offers e
+            LEFT JOIN offer_notifications n ON n.offer_id=e.offer_id
+            WHERE n.offer_id IS NULL AND e.active=1 AND e.user_state='new'
+            ORDER BY e.first_seen DESC LIMIT 7
+        """).fetchall()
+        count = conn.execute("""
+            SELECT COUNT(*) FROM external_offers e
+            LEFT JOIN offer_notifications n ON n.offer_id=e.offer_id
+            WHERE n.offer_id IS NULL AND e.active=1 AND e.user_state='new'
+        """).fetchone()[0]
+    if not count:
+        return {"enabled": True, "sent": 0}
+    lines = ["🎮 <b>FreebieHarbor: " + str(count) + " new offer(s)</b>"]
+    for item in rows[:6]:
+        name = html.escape(str(item["title"] or "Untitled")[:90])
+        provider = html.escape(str(item["provider"] or "")[:40])
+        url = safe_public_url(item["url"])
+        if not url:
+            continue
+        lines.append("• <a href='" + html.escape(url, quote=True) + "'>" +
+                     name + "</a>" + (" · " + provider if provider else ""))
+    if count > 6:
+        lines.append("… and " + str(count - 6) + " more in the dashboard")
+    try:
+        _send_telegram("\n".join(lines))
+    except RuntimeError as exc:
+        set_meta("notification_error", str(exc))
+        return {"enabled": True, "sent": 0, "error": str(exc)}
+    with _db_lock, db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO offer_notifications(offer_id,seen_at) "
+            "SELECT offer_id, ? FROM external_offers WHERE active=1", (now_iso(),)
+        )
+    set_meta("notification_error", "")
+    set_meta("last_notification_at", now_iso())
+    return {"enabled": True, "sent": count}
+
+
+def prune_old_reddit_posts():
+    """Keep optional Reddit data local and short-lived, even after disabling its feed."""
+    cutoff = time.time() - 24 * 3600
+    with _db_lock, db() as conn:
+        result = conn.execute("DELETE FROM posts WHERE created_utc < ?", (cutoff,))
+    return result.rowcount
+
+
 def poll_all(force_preflight=False):
     if not _poll_lock.acquire(blocking=False):
         return {"ok": False, "message": "refresh already running"}
@@ -787,7 +899,19 @@ def poll_all(force_preflight=False):
             except Exception as e:
                 set_meta(f"poll_error:{sub}", f"{type(e).__name__}: {e}")
                 counts[sub] = "error"
+        try:
+            prune_old_reddit_posts()
+        except sqlite3.Error:
+            set_meta("reddit_prune_error", "SQLite maintenance error")
         external_counts = poll_external_sources()
+        # Only initialize the alert baseline when a source actually responded.
+        # A total network outage must not turn recovered historical offers into alerts.
+        if any(value != "error" for value in external_counts.values()):
+            try:
+                notify_new_offers()
+            except Exception:
+                set_meta("notification_error", "Unexpected notifier error")
+
         set_meta("last_refresh_at", now_iso())
         return {"ok": True, "counts": counts, "external": external_counts}
     finally:
@@ -887,7 +1011,11 @@ def _query_text(query, key, default=""):
 
 def _safe_return_to(value, fallback="/dashboard"):
     value = str(value or "").strip()
-    if value.startswith("/") and not value.startswith("//") and "\r" not in value and "\n" not in value:
+    if not value or len(value) > 2048 or "\\" in value or any(ord(ch) < 32 for ch in value):
+        return fallback
+    parsed = urlparse(value)
+    if (not parsed.scheme and not parsed.netloc and not parsed.fragment
+            and parsed.path in {"/dashboard", "/offers", "/reddit", "/indiegala"}):
         return value
     return fallback
 
@@ -1078,7 +1206,7 @@ def _reddit_card(r, return_to):
     state = str(r["user_state"] or "new")
     badge = "Entered" if state == "entered" else "Blocked" if blocked else "Open"
     badge_variant = "default" if state == "entered" else "warning" if blocked else "success"
-    reddit_url = html.escape(r["permalink"], quote=True)
+    reddit_url = html.escape(safe_reddit_url(r["permalink"]), quote=True)
     return_value = html.escape(return_to, quote=True)
     req = requirement_html(r)
     draft_form = '<form method="post" action="/draft">'
@@ -1091,7 +1219,7 @@ def _reddit_card(r, return_to):
         actions += f'<form method="post" action="/state"><input type="hidden" name="id" value="{html.escape(r["post_id"])}"><input type="hidden" name="return_to" value="{return_value}"><button class="btn btn-secondary btn-sm" name="state" value="ignored">Ignore</button></form>'
     if state != "new":
         actions += f'<form method="post" action="/state"><input type="hidden" name="id" value="{html.escape(r["post_id"])}"><input type="hidden" name="return_to" value="{return_value}"><button class="btn btn-ghost btn-sm" name="state" value="new">Undo</button></form>'
-    open_btn = f'<a class="btn btn-ghost btn-sm" href="{reddit_url}" target="_blank" rel="noopener noreferrer">Open on Reddit</a>'
+    open_btn = f'<a class="btn btn-ghost btn-sm" href="{reddit_url}" target="_blank" rel="noopener noreferrer">Open on Reddit</a>' if reddit_url else ""
     return f'''<article class="card reddit-card"><div class="card-body"><div class="row-between"><span class="badge badge-info">r/{html.escape(r["subreddit"])}</span><span class="badge badge-{badge_variant}">{badge}</span></div><h3>{html.escape(r["title"])}</h3><div class="text-sm muted">{fmt_time(r["created_utc"])} · {r["num_comments"]} comments · u/{html.escape(r["author"])}</div><div class="requirement">{req}</div><details><summary>What the post says</summary><p class="post-text">{html.escape(ellipsis(r["body"], 900))}</p></details><div class="actions">{open_btn}{actions}</div></div></article>'''
 
 
@@ -1197,10 +1325,10 @@ def _dashboard_external_rows(limit=6):
     if not rows: return '<div class="empty">No live external offers right now.</div>', total
     out=[]
     for r in rows:
-        image=str(r["image_url"] or "")
+        image=safe_public_url(r["image_url"])
         img=f'<img class="row-thumb" src="{html.escape(image, quote=True)}" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' if image else '<div class="row-thumb"></div>'
         source={"gamerpower":"GamerPower","freetokeep":"FreeToKeep","ggdeals":"GG.deals","alienware":"Alienware Arena","indiegala":"IndieGala"}.get(str(r["source"] or ""),str(r["source"] or "External"))
-        out.append(f'''<div class="list-row">{img}<div class="row-main"><b>{html.escape(str(r["title"] or "Untitled"))}</b><div class="row-meta"><span>{html.escape(source)}</span><span>{html.escape(str(r["offer_type"] or ""))}</span></div></div><a class="btn btn-ghost btn-sm" href="{html.escape(str(r["url"]), quote=True)}" target="_blank">Open ↗</a></div>''')
+        out.append(f'''<div class="list-row">{img}<div class="row-main"><b>{html.escape(str(r["title"] or "Untitled"))}</b><div class="row-meta"><span>{html.escape(source)}</span><span>{html.escape(str(r["offer_type"] or ""))}</span></div></div><a class="btn btn-ghost btn-sm" href="{html.escape(safe_public_url(r["url"]), quote=True)}" target="_blank" rel="noopener noreferrer">Open ↗</a></div>''')
     return '<div class="list-rows">'+"".join(out)+'</div>', total
 
 
@@ -1280,8 +1408,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(raw)
 
@@ -1292,11 +1418,29 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
 
+    def _host_allowed(self):
+        try:
+            host = urlparse("http://" + self.headers.get("Host", "")).hostname
+        except ValueError:
+            return False
+        return bool(host and host.lower() in ALLOWED_HOSTS)
+
+    def _post_origin_allowed(self):
+        origin = self.headers.get("Origin", "")
+        try:
+            parsed = urlparse(origin)
+            return parsed.scheme in {"http", "https"} and (
+                parsed.netloc.lower() == self.headers.get("Host", "").lower()
+            )
+        except ValueError:
+            return False
+
     def do_GET(self):
+        if not self._host_allowed():
+            self.send(403, "Unknown host", "text/plain")
+            return
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
@@ -1332,9 +1476,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, "Not found", "text/plain; charset=utf-8")
 
     def do_POST(self):
+        if not self._host_allowed() or not self._post_origin_allowed():
+            self.send(403, "Invalid host or origin", "text/plain")
+            return
+        if self.headers.get("Content-Type", "").split(";", 1)[0].lower() != "application/x-www-form-urlencoded":
+            self.send(415, "Expected form data", "text/plain")
+            return
         path = urlparse(self.path).path
         max_body = 8192
-        n = min(int(self.headers.get("Content-Length", "0") or 0), max_body)
+        try:
+            n = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError:
+            self.send(400, "Invalid content length", "text/plain")
+            return
+        if not 0 <= n <= max_body:
+            self.send(413, "Request too large", "text/plain")
+            return
         form = parse_qs(self.rfile.read(n).decode("utf-8", "replace")) if n else {}
         raw_return_to = (form.get("return_to") or [""])[0]
 

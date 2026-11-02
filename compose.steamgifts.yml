@@ -1,0 +1,14 @@
+# Optional overlay: mount a consistent SQLite snapshot, not a live
+# SteamSelfGifter config directory containing account session material.
+# Usage:
+#   STEAMGIFTS_DB_SOURCE=/absolute/path/to/steamgifts-snapshot.db \
+#     docker compose -f compose.yml -f compose.steamgifts.yml up -d
+services:
+  hub:
+    environment:
+      STEAMGIFTS_DB: /integration/steamgifts.db
+    volumes:
+      - type: bind
+        source: ${STEAMGIFTS_DB_SOURCE:?Set an absolute path to a sanitized SteamSelfGifter SQLite snapshot}
+        target: /integration/steamgifts.db
+        read_only: true
