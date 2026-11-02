@@ -23,6 +23,12 @@ Open http://127.0.0.1:18081 on your server. The port is intentionally localhost-
 
 Then visit http://127.0.0.1:18081.
 
+## Dashboard preview
+
+![FreebieHarbor dashboard using explicitly fictional demo offers](docs/assets/dashboard.png)
+
+*Screenshot from the real local web app, seeded with fictional sample offers. No personal accounts or game claims are shown.*
+
 ## At a glance
 
 | Source / integration | In the default install? | What it does |
