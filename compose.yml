@@ -1,0 +1,24 @@
+name: freebieharbor
+services:
+  hub:
+    build: .
+    image: freebieharbor:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FREEBIEHARBOR_PORT:-18081}:8080"
+    environment:
+      POLL_SECONDS: "${POLL_SECONDS:-1200}"
+      PUBLISHER_BASE: "${PUBLISHER_BASE:-}"
+      INDIEGALA_WORKER: "${INDIEGALA_WORKER:-}"
+      STEAMGIFTS_DB: "${STEAMGIFTS_DB:-}"
+    volumes:
+      - data:/data
+    mem_limit: 192m
+    cpus: 0.40
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  data:
