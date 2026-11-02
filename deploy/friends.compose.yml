@@ -2,7 +2,7 @@
 name: freebieharbor-friends
 services:
   portal:
-    image: ghcr.io/bl0ck154/freebieharbor:v0.5.0
+    image: ghcr.io/bl0ck154/freebieharbor:v0.5.1
     container_name: freebieharbor-friends
     command: ["python3", "/app/friends/portal.py"]
     restart: unless-stopped

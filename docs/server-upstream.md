@@ -3,7 +3,7 @@
 There are **three separate layers**:
 
 1. **FreebieHarbor GitHub repository** is the source of truth for the public Python app.
-2. **GHCR** holds versioned Docker images built from tagged GitHub releases (for example `ghcr.io/bl0ck154/freebieharbor:v0.5.0`).
+2. **GHCR** holds versioned Docker images built from tagged GitHub releases (for example `ghcr.io/bl0ck154/freebieharbor:v0.5.1`).
 3. **An installed server container** uses whichever image version its Compose file explicitly pins. It **does not automatically update** when code is pushed to GitHub.
 
 This is intentional: a developer's push should not silently restart a real user's server or migrate their database.

@@ -87,6 +87,20 @@ class FriendsTests(unittest.TestCase):
         self.assertNotIn("SteamLogin",settings)
         self.assertEqual(settings["FreePackagesLimit"],15)
 
+    def test_admin_invite_roles_and_member_access(self):
+        admin_invite = portal.create_invite(is_admin=True)
+        member_invite = portal.create_invite()
+        self.assertTrue(portal.register(admin_invite,"owner_user","strong-admin-password"))
+        self.assertTrue(portal.register(member_invite,"member_user","strong-member-password"))
+        admin_session = portal.get_session(portal.login("owner_user","strong-admin-password")[0])
+        member_session = portal.get_session(portal.login("member_user","strong-member-password")[0])
+        self.assertEqual(admin_session["is_admin"],1)
+        self.assertEqual(member_session["is_admin"],0)
+        self.assertIn("Create invite",portal.admin_content(admin_session))
+        self.assertEqual(portal.admin_content(member_session),"")
+        self.assertNotIn('href="/admin"',portal.page("Test","",member_session["username"],False))
+        self.assertIn('href="/admin"',portal.page("Test","",admin_session["username"],True))
+
     def test_http_auth_and_csrf(self):
         server=portal.ThreadingHTTPServer(("127.0.0.1",0),portal.Handler)
         portal.PUBLIC_ORIGIN="http://127.0.0.1:"+str(server.server_port)
