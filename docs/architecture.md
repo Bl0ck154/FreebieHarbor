@@ -30,3 +30,7 @@ Keep the snapshot readable only by the host account running Docker. Then:
 
 Snapshots are static. Refresh them yourself if you want updated counts. Neither
 the application nor its Compose overlay modifies the source database.
+
+## ASF FreePackages integration
+
+The optional ASF adapter reads two *counts* from a user-provided JSON snapshot: SeenPackages and NewOwnedPackages. These arrays describe FreePackages plugin bookkeeping, not verified Steam ownership. Never mount ASF.db or any bot account file: these may contain account/package tokens.

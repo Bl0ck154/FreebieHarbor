@@ -12,3 +12,5 @@ Do not expose it directly to the public internet. If you use a reverse proxy, pr
 Telegram alerts are opt-in. Store the bot token only in the ignored .env file or your secret manager; never in a public issue, screenshot, or CI logs.
 
 The direct Python development command listens on 127.0.0.1 by default. Docker uses 0.0.0.0 inside its isolated container, while Compose binds the host port to 127.0.0.1.
+
+For ASF integration, mount only a FreePackages plugin JSON snapshot. Never mount ASF.db or an ASF bot account database: they can contain Steam access tokens.
