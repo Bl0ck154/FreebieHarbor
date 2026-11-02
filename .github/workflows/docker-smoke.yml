@@ -1,0 +1,44 @@
+name: Docker smoke (manual)
+
+# Run before releases when the Dockerfile or Compose environment changes.
+# Not scheduled and not run on every PR to conserve hosted runner minutes.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the standalone image
+        run: docker build --tag freebieharbor:smoke .
+      - name: Run with default local-only configuration
+        run: |
+          docker run -d --name freebieharbor-smoke \
+            -p 127.0.0.1:18081:8080 \
+            -e NOTIFY_NEW_OFFERS=false \
+            -e PUBLISHER_BASE= \
+            freebieharbor:smoke
+          for i in $(seq 1 25); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:18081/health -o /tmp/health.json; then
+              break
+            fi
+            sleep 1
+          done
+          python -c 'import json; assert json.load(open("/tmp/health.json"))["ok"]'
+          curl --fail --silent http://127.0.0.1:18081/dashboard | grep -q FreebieHarbor
+          curl --fail --silent http://127.0.0.1:18081/api/rewards | grep -q '"connected": false'
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            -H 'Origin: https://evil.example' \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data 'state=ignored' http://127.0.0.1:18081/state)" = 403
+      - name: Show logs if startup fails
+        if: failure()
+        run: docker logs --tail=100 freebieharbor-smoke || true
+      - name: Stop smoke container
+        if: always()
+        run: docker rm -f freebieharbor-smoke || true
