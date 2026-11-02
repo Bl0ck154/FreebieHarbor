@@ -27,3 +27,6 @@ A separate one-shot Node QR prototype was prepared locally with a 120-second app
 **Resource goal:** one shared ASF process for the small invited pilot, plus a temporary QR process *only while an owner is connecting an account*. Do not run a permanent login process or container per friend.
 
 The remaining implementation and validation are tracked in [issue #24](https://github.com/Bl0ck154/FreebieHarbor/issues/24).
+## Safer production authentication direction
+
+ASF's [official Configuration guide](https://github.com/JustArchiNET/ArchiSteamFarm/wiki/Configuration) warns that `BotName.db` is internal persistent storage and **must not be manually edited**. Consequently, injecting an externally generated `BackingRefreshToken` directly into that database is an unsupported engineering hypothesis, not a production-ready method. A safer implementation should use a short-lived interactive ASF instance for initial QR approval, let **ASF itself** save its bot database, then validate the identity and transfer only that bot's verified state under a coordinated stop/backup/restart procedure. Test data and a mocked rollback are not substitutes for verifying this exact ASF version's behavior. Keep automatic claiming disabled until the full account lifecycle can be confirmed.
