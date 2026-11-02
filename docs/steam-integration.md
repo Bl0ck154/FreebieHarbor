@@ -10,6 +10,12 @@
 - Provisioner: on explicit request, stores a friend-supplied Steam account login name (never a password) and prepares `fh_<user_id>.json` under the **private Friends ASF** configuration directory. The bot starts **disabled**.
 - Friends ASF: **one** ASF process for up to five friends initially, each with an independent bot config, with FreePackages 1.7.1.2 installed. It has its own credentials and IPC password and does not mount or reuse the owner's ASF config.
 
+### Confirmed limitation of ASF QR sign-in
+
+ASF upstream PR [#3618](https://github.com/JustArchiNET/ArchiSteamFarm/pull/3618) clarifies that QR authentication is initiated **only in interactive console mode** when no usable credentials or refresh token are present. ASF does **not** initiate QR in `Headless=true` mode; setting `RequiredInput=QrCodeLogin` from API does not make Headless start one. The currently deployed shared Friends ASF runs Headless.
+
+The implementation must therefore either provide a controlled interactive, per-bot QR session broker with explicit user scoping and SteamID verification, or find a separate, upstream-supported authentication method. A public reverse proxy to the full ASF API is not acceptable, because it can manage every bot and their sessions. The QR login flow must be tested with an authorized volunteer account before activating free packages.
+
 **Important: Steam OpenID is only identity verification.** Valve explicitly documents that it returns a SteamID; it does not grant a background Steam network session or authority to redeem licenses. Steam's Subscriber Agreement restricts automation. Connecting the ASF bot requires the friend to approve the **separate ASF login** through Steam Mobile/Guard after the backend can securely bind that session to the verified SteamID. This session onboarding/verification is **not yet completed**. Never call a disabled, staged bot connected or promise automatic licenses.
 
 ## Official components
