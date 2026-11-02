@@ -14,7 +14,7 @@
 
 ASF upstream PR [#3618](https://github.com/JustArchiNET/ArchiSteamFarm/pull/3618) clarifies that QR authentication is initiated **only in interactive console mode** when no usable credentials or refresh token are present. ASF does **not** initiate QR in `Headless=true` mode; setting `RequiredInput=QrCodeLogin` from API does not make Headless start one. The currently deployed shared Friends ASF runs Headless.
 
-The implementation must therefore either provide a controlled interactive, per-bot QR session broker with explicit user scoping and SteamID verification, or find a separate, upstream-supported authentication method. A public reverse proxy to the full ASF API is not acceptable, because it can manage every bot and their sessions. The QR login flow must be tested with an authorized volunteer account before activating free packages.
+The optional v0.8.0 broker provides a controlled interactive, account-scoped ASF QR bootstrap and follow-up SteamID checks, but has only mock tests, not a real-account validation. A public reverse proxy to the full ASF API is not acceptable, because it can manage every bot and their sessions. The QR login flow must be tested with an authorized volunteer account before activating free packages.
 
 **Important: Steam OpenID is only identity verification.** Valve explicitly documents that it returns a SteamID; it does not grant a background Steam network session or authority to redeem licenses. Steam's Subscriber Agreement restricts automation. Connecting the ASF bot requires the friend to approve the **separate ASF login** through Steam Mobile/Guard after the backend can securely bind that session to the verified SteamID. This session onboarding/verification is **not yet completed**. Never call a disabled, staged bot connected or promise automatic licenses.
 
@@ -38,7 +38,7 @@ The implementation must therefore either provide a controlled interactive, per-b
 
 6. Use `--apply` to atomically stage a **disabled** bot config after reviewing the request. Existing eligible bot files are never overwritten. Withdrawn requests cause the provisioner to set their bot `Enabled=false` while preserving its other private fields. The friend must separately finish Steam authentication before activation can be enabled. The owner should verify the authenticated bot's SteamID matches the linked ID.
 
-The sample commands are administration tools, **not** a working public QR-login implementation. Future GUI automation must never give friends ASF IPC access, allow them to manage other bots, or collect passwords/Steam Guard codes in FreebieHarbor.
+The CLI and optional self-service QR broker are experimental. The GUI must never give friends ASF IPC access, allow them to manage other bots, or collect passwords/Steam Guard codes in FreebieHarbor.
 
 ## Resource and security plan
 
@@ -46,7 +46,7 @@ For up to five connected Steam accounts in the pilot, one ASF process avoids the
 
 Only the admin provisioning service may write ASF bot configs. Friend-facing routes can only (a) verify each Steam identity, (b) request or withdraw onboarding for their own account IDs, and (c) inspect their own pending status. Owner bots remain in a completely separate ASF instance.
 
-A future friend logout/revocation must stop its bot, revoke its session, and safely delete its credentials in addition to disabling the portal login. Do not enable active accounts until this lifecycle is implemented and verified.
+Offboarding can now disable a bot and remove its local session files without affecting other bots; Steam-side session revocation remains under account-owner security controls. Real Steam login and package acquisition have not been verified.
 
 ## External references
 
@@ -59,8 +59,12 @@ A future friend logout/revocation must stop its bot, revoke its session, and saf
 
 One Friends user may link up to five distinct SteamIDs. Steam OpenID proves each identity separately; the same SteamID cannot be linked to two Friends users. The database now stores `steam_accounts(id,user_id,steam_id,login,requested)`, and migration copies a previously linked SteamID from the old `users.steam_id` fields once without deleting those legacy fields.
 
-The proof-of-concept bot provisioner stages `fh_account_<id>.json` for every requested linked Steam account. A cancelled request disables its matching config only; it never affects another account owned by the same or a different user. Until secure Steam Guard/QR login and session revocation are built, no bot is auto-enabled. The pilot has a maximum of five *requested* ASF bots globally, even though the portal allows additional verified accounts to remain unrequested.
+The proof-of-concept bot provisioner stages `fh_account_<id>.json` for every requested linked Steam account. A cancelled request disables its matching config only; it never affects another account owned by the same or a different user. The optional QR broker enables a bot only after ASF-native login, exact SteamID confirmation and a guarded transfer. No real account has yet exercised this path. The pilot has a maximum of five *requested* ASF bots globally, even though the portal allows additional verified accounts to remain unrequested.
 
 ## QR onboarding: implementation and validation status
 
-See [Steam QR onboarding engineering status](steam-qr-onboarding.md) for the confirmed Headless ASF limitation, the researched SteamClient QR approach and the required session-import, SteamID attestation, rollback and revocation gates. The Friends portal does **not** yet support full QR onboarding or verified automatic Steam license acquisition.
+See [Steam QR onboarding engineering status](steam-qr-onboarding.md) for the confirmed Headless ASF limitation, the native interactive ASF bootstrap and the private QR broker. The web button is optional and not displayed without server-side opt-in; real Steam license acquisition remains unverified.
+
+## Native ASF QR preview (v0.8.0)
+
+An optional local Unix-socket broker now supports one time-limited interactive ASF QR bootstrap and native ASF session handoff per verified account. No real Steam account approval or automatic license acquisition has been tested. See [QR onboarding](steam-qr-onboarding.md) for deployment and limitations.

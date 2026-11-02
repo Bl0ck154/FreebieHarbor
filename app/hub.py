@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "giveaways.db")
 POLL_SECONDS = max(300, int(os.environ.get("POLL_SECONDS", "1200")))

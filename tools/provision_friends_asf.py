@@ -5,6 +5,7 @@ No credentials are copied. Account authentication and activation require a
 separate verified onboarding process, never initiated by this provisioner.
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -29,7 +30,7 @@ def atomic_json(path, value):
             os.unlink(tmp)
 
 
-def provision(db_path, config_dir, apply=False, limit=5):
+def _provision_locked(db_path, config_dir, apply=False, limit=5):
     config_dir = Path(config_dir).resolve()
     with sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as db:
         rows = db.execute("""
@@ -80,8 +81,33 @@ def provision(db_path, config_dir, apply=False, limit=5):
             else:
                 report.append({"bot": path.stem, "status": "opted out; already disabled"})
         else:
-            report.append({"bot": path.stem, "status": "present; unchanged"})
+            settings = json.loads(path.read_text())
+            if settings.get("SteamLogin") != login:
+                if settings.get("Enabled") is not False:
+                    raise ValueError("A live bot cannot be re-bound to another Steam login")
+                db_path = config_dir / f"fh_account_{account_id}.db"
+                if db_path.exists():
+                    raise ValueError("Old bot state must be revoked before re-linking")
+                settings["SteamLogin"] = login
+                if apply:
+                    atomic_json(path, settings)
+                report.append({"bot": path.stem, "status": "re-enrolled disabled; authorization required"})
+            else:
+                report.append({"bot": path.stem, "status": "present; unchanged"})
     return report
+
+
+def provision(db_path, config_dir, apply=False, limit=5):
+    if not apply:
+        return _provision_locked(db_path, config_dir, apply=False, limit=limit)
+    directory = Path(config_dir).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / ".friends-qr-onboarding.lock").open("a+b") as fd:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+        try:
+            return _provision_locked(db_path, directory, apply=True, limit=limit)
+        finally:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
 
 
 def main():
