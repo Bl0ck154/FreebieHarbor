@@ -1,0 +1,32 @@
+# Standalone canary, not a replacement for any existing Steam Farm service.
+# This file deliberately pins an immutable release tag (never :latest).
+name: freebieharbor-canary
+services:
+  hub:
+    image: ghcr.io/bl0ck154/freebieharbor:v0.4.1
+    container_name: freebieharbor-canary
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18083:8080"
+    environment:
+      POLL_SECONDS: "7200"
+      NOTIFY_NEW_OFFERS: "false"
+      NOTIFY_NEW_WINS: "false"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,::1"
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 160m
+    cpus: 0.15
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 2m
+        max-file: "2"
+volumes:
+  data:

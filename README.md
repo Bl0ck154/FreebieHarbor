@@ -21,6 +21,7 @@ You don't need to check multiple giveaway websites every day. FreebieHarbor peri
 
 - **Free games in one feed** — GamerPower, FreeToKeep, GG.deals freebies and best-effort Alienware Arena discoveries.
 - **Your history stays local** — SQLite storage, search, source filters and claimed/ignored states.
+- **Fast manual refresh** — clicking Refresh now launches source checks in the background rather than blocking the page.
 - **Optional Telegram alerts** — new offers and recorded SteamGifts wins, with deduplication.
 - **Optional reward insights** — read-only SteamSelfGifter wins and ASF FreePackages plugin counters from snapshots.
 - **No AI tokens, Steam login or paid API** required for the core. No automated contest entries or game claiming.
@@ -34,7 +35,7 @@ docker volume create freebieharbor-data
 docker run -d --name freebieharbor --restart unless-stopped \
   -p 127.0.0.1:18081:8080 \
   -v freebieharbor-data:/data \
-  ghcr.io/bl0ck154/freebieharbor:v0.4.0
+  ghcr.io/bl0ck154/freebieharbor:v0.4.1
 ```
 
 Open **http://127.0.0.1:18081** on the host. For a remote server, connect over SSH:
@@ -91,7 +92,7 @@ Telegram alerts establish a silent baseline on the first successful run, so exis
 
 FreebieHarbor is a lightweight Python 3.13 application using only the standard library, SQLite and Docker. It is **not affiliated with Valve, SteamGifts, Alienware Arena, GG.deals or the underlying offer providers**. It links to [SteamSelfGifter](https://github.com/kernelcoffee/SteamSelfGifter), [ArchiSteamFarm](https://github.com/JustArchiNET/ArchiSteamFarm) and [FreePackages](https://github.com/Citrinate/FreePackages) as optional independent integrations; their respective licenses apply.
 
-**Documentation:** [How it works](docs/architecture.md) · [Troubleshooting](docs/troubleshooting.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party credits](THIRD_PARTY.md)
+**Documentation:** [Server deployments and upstream updates](docs/server-upstream.md) · [How it works](docs/architecture.md) · [Troubleshooting](docs/troubleshooting.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party credits](THIRD_PARTY.md)
 
 **Developers:** `python3 -m unittest discover -s tests -v` runs the offline regression tests. [Try a fictional, offline demo](docs/troubleshooting.md#how-do-i-run-a-fully-offline-preview) without an account or network polling.
 

@@ -33,7 +33,7 @@ class HubTests(unittest.TestCase):
         self.assertNotIn("Generate AI reply", page)
 
     def test_release_version_matches_software(self):
-        self.assertEqual(hub.APP_VERSION, "0.4.0")
+        self.assertEqual(hub.APP_VERSION, "0.4.1")
 
     def test_optional_rewards_not_configured(self):
         with patch.dict(os.environ, {"STEAMGIFTS_DB": ""}):
@@ -256,6 +256,54 @@ class HubTests(unittest.TestCase):
         data = json.loads(result.group(1))
         self.assertEqual(data["@type"], "SoftwareApplication")
         self.assertEqual(data["softwareVersion"], hub.APP_VERSION)
+
+
+    def test_refresh_endpoint_responds_without_waiting_for_network(self):
+        import http.client
+        import time
+        from threading import Event, Thread
+        from http.server import ThreadingHTTPServer
+
+        entered = Event()
+        release = Event()
+
+        def stalled_source_scan():
+            entered.set()
+            release.wait(timeout=4)
+            return {"ok": True}
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), hub.Handler)
+        serving = Thread(target=server.serve_forever, daemon=True)
+        serving.start()
+        try:
+            with patch.object(hub, "poll_all", side_effect=stalled_source_scan), \
+                 patch.object(hub, "get_meta", return_value="0"):
+                connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+                start = time.monotonic()
+                connection.request(
+                    "POST", "/refresh", body="return_to=%2Fdashboard",
+                    headers={
+                        "Origin": "http://127.0.0.1:" + str(server.server_port),
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                )
+                response = connection.getresponse()
+                self.assertEqual(response.status, 303)
+                self.assertLess(time.monotonic() - start, 1.0)
+                self.assertTrue(entered.wait(timeout=2))
+                response.read()
+                connection.close()
+        finally:
+            release.set()
+            if hub._refresh_thread is not None:
+                hub._refresh_thread.join(timeout=3)
+            server.shutdown()
+            server.server_close()
+            serving.join(timeout=3)
+
+    def test_release_version_in_dashboard_and_user_agent(self):
+        self.assertIn("FreebieHarbor v0.4.1", hub.render_page("/dashboard", {}))
+        self.assertIn("0.4.1", hub.EXTERNAL_USER_AGENT)
 
 
 if __name__ == "__main__":

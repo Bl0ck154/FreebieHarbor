@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "giveaways.db")
 POLL_SECONDS = max(300, int(os.environ.get("POLL_SECONDS", "1200")))
@@ -42,6 +42,8 @@ ALLOWED_HOSTS = {
 os.makedirs(DATA_DIR, exist_ok=True)
 _db_lock = threading.Lock()
 _poll_lock = threading.Lock()
+_refresh_request_lock = threading.Lock()
+_refresh_thread = None
 
 
 def now_iso():
@@ -658,6 +660,19 @@ def poll_all():
         _poll_lock.release()
 
 
+def schedule_refresh():
+    """Start a manual refresh without blocking the HTTP request thread."""
+    global _refresh_thread
+    if get_meta("demo_mode") == "1":
+        return False
+    with _refresh_request_lock:
+        if _poll_lock.locked() or (_refresh_thread is not None and _refresh_thread.is_alive()):
+            return False
+        _refresh_thread = threading.Thread(target=poll_all, name="manual-refresh", daemon=True)
+        _refresh_thread.start()
+        return True
+
+
 def poll_loop():
     while True:
         try:
@@ -907,7 +922,7 @@ def render_shell(active, content, status=None, title="FreebieHarbor"):
     nav_html += f'<a class="nav-link" href="https://github.com/kernelcoffee/SteamSelfGifter" target="_blank" rel="noopener noreferrer">{svg_icon("external")}<span>SteamSelfGifter</span></a>'
     nav_html += f'<a class="nav-link" href="https://github.com/JustArchiNET/ArchiSteamFarm" target="_blank" rel="noopener noreferrer">{svg_icon("external")}<span>ASF</span></a>'
     moon = svg_icon("moon", 20); sun = svg_icon("sun", 20)
-    return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>{html.escape(title)}</title><style>{UI_CSS}</style><script>{UI_JS}</script></head><body><header class="header"><h1>⚓ FreebieHarbor</h1><div class="header-right"><div class="status-item" title="{html.escape(session_title, quote=True)}">{session_icon}<span class="status-text">{'Local'}</span></div><div class="status-item"><span class="status-green">{svg_icon('activity',16)}</span><span class="status-text">{"Demo" if get_meta("demo_mode") == "1" else "Polling"}</span></div><button class="icon-button" type="button" onclick="toggleTheme()" aria-label="Toggle theme"><span id="theme-moon">{moon}</span><span id="theme-sun" style="display:none">{sun}</span></button></div></header><div class="layout"><aside class="sidebar"><nav><div class="nav-list">{nav_html}</div></nav></aside><main class="main">{content}</main></div></body></html>'''
+    return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>{html.escape(title)}</title><style>{UI_CSS}</style><script>{UI_JS}</script></head><body><header class="header"><h1>⚓ FreebieHarbor</h1><div class="header-right"><div class="status-item" title="{html.escape(session_title, quote=True)}">{session_icon}<span class="status-text">{'Local'}</span></div><div class="status-item"><span class="status-green">{svg_icon('activity',16)}</span><span class="status-text">{"Demo" if get_meta("demo_mode") == "1" else "Polling"}</span></div><button class="icon-button" type="button" onclick="toggleTheme()" aria-label="Toggle theme"><span id="theme-moon">{moon}</span><span id="theme-sun" style="display:none">{sun}</span></button></div></header><div class="layout"><aside class="sidebar"><nav><div class="nav-list">{nav_html}</div></nav></aside><main class="main">{content}<div class="footer-note">FreebieHarbor v{APP_VERSION} · local-first · <a href="https://github.com/Bl0ck154/FreebieHarbor" target="_blank" rel="noopener noreferrer">GitHub</a></div></main></div></body></html>'''
 
 
 def _stat_card(label, value, color="", sub=""):
@@ -1083,9 +1098,12 @@ def render_dashboard_content(status):
     )
     demo_note = '<div class="status-banner warning">Sample data: fictional offers for UI preview.</div>' if get_meta("demo_mode") == "1" else ""
     demo_enabled = get_meta("demo_mode") == "1"
+    refreshing = _poll_lock.locked()
     refresh_action = (
         '<span class="badge badge-info">Offline preview</span>'
         if demo_enabled else
+        '<span class="badge badge-info">Refreshing sources…</span>'
+        if refreshing else
         '<form method="post" action="/refresh"><button class="btn btn-primary btn-md">Refresh now</button></form>'
     )
     offer_label = "Sample offers" if demo_enabled else "Live offers"
@@ -1162,6 +1180,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, json.dumps({
                 "ok": True,
                 "version": APP_VERSION,
+                "refreshing": _poll_lock.locked(),
                 "last_refresh_at": get_meta("last_refresh_at"),
                 "alienware_direct_state": get_meta("alienware_direct_state", "unknown"),
                 "poll_errors": {
@@ -1220,7 +1239,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/refresh":
-            poll_all()
+            schedule_refresh()
             self.redirect(_safe_return_to(raw_return_to, "/dashboard"))
             return
 
@@ -1233,7 +1252,7 @@ def main():
     else:
         print("FreebieHarbor demo preview; source polling disabled", flush=True)
     server=ThreadingHTTPServer((BIND_HOST,PORT),Handler)
-    print(f"giveaway-inbox listening on :{PORT}",flush=True)
+    print(f"FreebieHarbor v{APP_VERSION} listening on {BIND_HOST}:{PORT}",flush=True)
     server.serve_forever()
 
 if __name__ == "__main__":
