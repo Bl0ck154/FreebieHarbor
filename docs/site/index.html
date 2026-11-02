@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FreebieHarbor — Self-Hosted Free PC Games Tracker &amp; Telegram Alerts</title>
+  <meta name="description" content="Track free PC games and giveaways from multiple sources in one private, self-hosted Docker dashboard. Optional Telegram alerts, SteamGifts wins, and local claim history. Free and open source.">
+  <meta name="robots" content="index,follow">
+  <meta name="theme-color" content="#101d35">
+  <link rel="canonical" href="https://bl0ck154.github.io/FreebieHarbor/">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='.85em' font-size='55'%3E%E2%9A%93%3C/text%3E%3C/svg%3E">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="FreebieHarbor">
+  <meta property="og:title" content="FreebieHarbor — Free PC Games Tracker">
+  <meta property="og:description" content="Self-host your own free PC game giveaway radar with local claim history and optional Telegram alerts. No Steam login or paid API.">
+  <meta property="og:url" content="https://bl0ck154.github.io/FreebieHarbor/">
+  <meta property="og:image" content="https://bl0ck154.github.io/FreebieHarbor/assets/dashboard.png">
+  <meta property="og:image:width" content="1440">
+  <meta property="og:image:height" content="1000">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="sitemap" type="application/xml" href="https://bl0ck154.github.io/FreebieHarbor/sitemap.xml">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "FreebieHarbor",
+    "applicationCategory": "UtilitiesApplication",
+    "operatingSystem": "Linux (Docker)",
+    "softwareVersion": "0.4.0",
+    "description": "Self-hosted PC game giveaway tracking dashboard with optional Telegram alerts and read-only SteamGifts statistics.",
+    "url": "https://bl0ck154.github.io/FreebieHarbor/",
+    "downloadUrl": "https://github.com/Bl0ck154/FreebieHarbor/releases/latest",
+    "codeRepository": "https://github.com/Bl0ck154/FreebieHarbor",
+    "screenshot": "https://bl0ck154.github.io/FreebieHarbor/assets/dashboard.png",
+    "license": "https://github.com/Bl0ck154/FreebieHarbor/blob/main/LICENSE",
+    "author": {"@type": "Person", "name": "Bl0ck154", "url": "https://github.com/Bl0ck154"},
+    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
+  }
+  </script>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1426;--panel:#14233b;--line:#30435d;--text:#edf5ff;--muted:#b2c4d8;--blue:#5ca6ff;--mint:#77e1be}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse 90% 48% at 60% 0%,#1d3c68 0%,var(--bg) 65%);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}a{color:var(--blue)}a:hover{text-decoration:underline}.wrap{max-width:1120px;margin:auto;padding:0 24px}
+    nav{height:76px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-size:22px;color:white;font-weight:800;text-decoration:none;letter-spacing:-.6px}.brand span{color:var(--mint)}
+    .navlinks{display:flex;gap:22px;align-items:center}.navlinks a{color:var(--muted);text-decoration:none;font-weight:600;font-size:14px}
+    .hero{padding:78px 0 46px;text-align:center}.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:6px 15px;border:1px solid #3a5877;border-radius:30px;font-size:13px;color:#d3e6fc;background:#192b47}
+    h1{font-size:clamp(38px,6vw,68px);letter-spacing:-2.2px;line-height:1.12;margin:24px auto 21px;max-width:960px}h1 em{font-style:normal;color:var(--mint)}.lead{max-width:740px;margin:auto;color:var(--muted);font-size:19px}
+    .actions{display:flex;justify-content:center;gap:13px;margin:30px 0;flex-wrap:wrap}.button{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:12px 21px;text-decoration:none;font-weight:750;min-height:48px}.button.primary{background:var(--blue);color:#06172c}.button.secondary{border:1px solid #51718d;color:#ecf5ff;background:#1b314c}.facts{font-size:14px;color:var(--muted)}
+    .screen{background:#fff;border:8px solid #263952;border-radius:19px;box-shadow:0 34px 80px #0007;overflow:hidden}.screen img{width:100%;height:auto;display:block}.screen-note{font-size:13px;color:var(--muted);text-align:center;margin:14px 0 75px}
+    section{padding:30px 0 55px;scroll-margin-top:24px}h2{font-size:clamp(26px,4vw,36px);letter-spacing:-.7px;margin:0 0 12px}.sub{margin:0 0 28px;color:var(--muted);max-width:710px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.feature{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:23px}.feature b{display:block;margin:8px 0;font-size:17px}.feature p{margin:0;color:var(--muted);font-size:14px}.symbol{font-size:24px}
+    .install{border:1px solid var(--line);border-radius:15px;background:#101d32;padding:22px;overflow-x:auto}.install code,.install pre{font:14px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace}.install pre{white-space:pre;margin:0;color:#d6f5ed}
+    .note{background:#14283d;border-left:3px solid var(--mint);padding:15px 19px;border-radius:7px;color:#d8ebfd;margin-top:18px}
+    .columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.columns .feature{min-height:145px}.faq details{border-bottom:1px solid var(--line);padding:15px 0}.faq summary{font-weight:700;cursor:pointer}.faq p{color:var(--muted);margin:10px 0 0}
+    footer{margin-top:40px;border-top:1px solid var(--line);padding:32px 0 50px;display:flex;justify-content:space-between;gap:15px;color:var(--muted);font-size:14px;flex-wrap:wrap}
+    @media(max-width:770px){.grid{grid-template-columns:1fr 1fr}.navlinks{gap:12px}.navlinks a:nth-child(2){display:none}.hero{padding:45px 0 24px}.screen-note{margin-bottom:32px}}
+    @media(max-width:520px){.grid,.columns{grid-template-columns:1fr}.navlinks a:first-child{display:none}h1{letter-spacing:-1px}}
+  </style>
+</head>
+<body>
+  <header class="wrap"><nav aria-label="Main navigation">
+    <a href="#top" class="brand">⚓ Freebie<span>Harbor</span></a>
+    <div class="navlinks"><a href="#features">Features</a><a href="#install">Install</a><a href="https://github.com/Bl0ck154/FreebieHarbor">GitHub ↗</a></div>
+  </nav></header>
+  <main id="top" class="wrap">
+    <div class="hero">
+      <span class="eyebrow">Free · Open source · Self-hosted</span>
+      <h1>Never lose track of <em>free PC games.</em></h1>
+      <p class="lead">One private dashboard for free-game giveaways, claim history and optional Telegram alerts. Runs in Docker — no Steam account, paid API or AI tokens required.</p>
+      <div class="actions">
+        <a class="button primary" href="#install">Get started in Docker</a>
+        <a class="button secondary" href="https://github.com/Bl0ck154/FreebieHarbor">View on GitHub</a>
+      </div>
+      <p class="facts">Public sources · Local SQLite · SteamGifts stats (optional) · MIT license</p>
+    </div>
+    <div class="screen"><img src="assets/dashboard.png" width="1440" height="1000" alt="FreebieHarbor dashboard showing source counts, game giveaway cards and claimed status" fetchpriority="high"></div>
+    <p class="screen-note">Screenshot from the actual application with fictional, clearly labeled demo data.</p>
+    <section id="features">
+      <h2>Free games, without the tab overload.</h2>
+      <p class="sub">A lightweight game giveaway tracker that keeps the routine stuff out of your way.</p>
+      <div class="grid">
+        <div class="feature"><span class="symbol">🎮</span><b>One game giveaway feed</b><p>Search and filter offers discovered via GamerPower, FreeToKeep, GG.deals and best-effort Alienware Arena.</p></div>
+        <div class="feature"><span class="symbol">🔔</span><b>Telegram notifications</b><p>Optional alerts for new offers and newly recorded SteamGifts wins, with deduplication.</p></div>
+        <div class="feature"><span class="symbol">✅</span><b>Track what you claimed</b><p>Mark offers as claimed or ignored. All history stays in your own SQLite database.</p></div>
+        <div class="feature"><span class="symbol">🏆</span><b>SteamGifts reward history</b><p>Optionally inspect entry and win data via a read-only SteamSelfGifter database snapshot.</p></div>
+        <div class="feature"><span class="symbol">🔐</span><b>No gaming login needed</b><p>The core works with public discovery sources. No Steam cookies or account credentials are required.</p></div>
+        <div class="feature"><span class="symbol">🐳</span><b>Small and self-hosted</b><p>Python standard library, Docker, and local storage. Prebuilt image for Linux amd64; build from source for arm64.</p></div>
+      </div>
+    </section>
+    <section id="install">
+      <h2>Run FreebieHarbor in Docker.</h2>
+      <p class="sub">The prebuilt Linux amd64 image needs only Docker and a persistent volume. No database server, AI subscription or setup wizard.</p>
+      <div class="install"><pre><code>docker volume create freebieharbor-data
+docker run -d --name freebieharbor --restart unless-stopped \
+  -p 127.0.0.1:18081:8080 \
+  -v freebieharbor-data:/data \
+  ghcr.io/bl0ck154/freebieharbor:v0.4.0</code></pre></div>
+      <p class="note"><strong>Local-only by default.</strong> Open <code>http://127.0.0.1:18081</code> on the host. On a remote server, use an SSH tunnel. The dashboard has no built-in login, so do not expose it directly to the internet.</p>
+      <div class="actions"><a class="button secondary" href="https://github.com/Bl0ck154/FreebieHarbor#quick-start">Full setup and configuration</a><a class="button secondary" href="https://github.com/Bl0ck154/FreebieHarbor/releases/latest">Latest release</a></div>
+    </section>
+    <section>
+      <h2>What it is — and what it isn't.</h2>
+      <div class="columns">
+        <div class="feature"><b>✓ A giveaway discovery hub</b><p>Find public free-game offers, remember claimed ones and optionally get notified. You control the server and storage.</p></div>
+        <div class="feature"><b>✕ Not an auto-claim bot</b><p>FreebieHarbor doesn't enter contests, redeem games or guarantee prizes. Site access, key stock and regional availability can vary.</p></div>
+      </div>
+    </section>
+    <section class="faq">
+      <h2>Frequently asked questions</h2>
+      <details><summary>Is FreebieHarbor free?</summary><p>Yes. The software is free and open source under the MIT license. Running your own server may have infrastructure costs.</p></details>
+      <details><summary>Does it require my Steam password?</summary><p>No. Public offer discovery works without a Steam account. SteamGifts and ASF statistics are optional read-only integrations using data snapshots.</p></details>
+      <details><summary>Can it automatically claim free Steam games?</summary><p>No. It tracks offers and lets you mark them claimed. It does not log in to stores or submit contest entries.</p></details>
+      <details><summary>What are the supported sources?</summary><p>GamerPower, FreeToKeep, GG.deals RSS and best-effort Alienware Arena. Additional provider availability depends on their own APIs and regional access.</p></details>
+      <details><summary>Does it work on Raspberry Pi or ARM64?</summary><p>You can build from source using Docker Compose on compatible Linux arm64 systems. The prebuilt GHCR image currently targets Linux amd64.</p></details>
+    </section>
+  </main>
+  <footer class="wrap"><span>© 2026 FreebieHarbor contributors · MIT</span><span><a href="https://github.com/Bl0ck154/FreebieHarbor">Source &amp; docs</a> · <a href="https://github.com/Bl0ck154/FreebieHarbor/security">Security</a> · <a href="https://github.com/Bl0ck154/FreebieHarbor/discussions">Community</a></span></footer>
+</body>
+</html>

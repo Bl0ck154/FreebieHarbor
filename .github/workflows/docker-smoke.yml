@@ -21,7 +21,6 @@ jobs:
           docker run -d --name freebieharbor-smoke \
             -p 127.0.0.1:18081:8080 \
             -e NOTIFY_NEW_OFFERS=false \
-            -e PUBLISHER_BASE= \
             freebieharbor:smoke
           for i in $(seq 1 25); do
             if curl --fail --silent --max-time 2 http://127.0.0.1:18081/health -o /tmp/health.json; then
@@ -32,12 +31,13 @@ jobs:
           python -c 'import json; assert json.load(open("/tmp/health.json"))["ok"]'
           curl --fail --silent http://127.0.0.1:18081/dashboard | grep -q FreebieHarbor
           curl --fail --silent http://127.0.0.1:18081/rewards | grep -q 'Reward tracking'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/reddit)" = 404
           curl --fail --silent http://127.0.0.1:18081/api/wins | grep -q '"wins":'
           curl --fail --silent http://127.0.0.1:18081/api/rewards | grep -q '"connected": false'
           test "$(curl -s -o /dev/null -w '%{http_code}' \
             -H 'Origin: https://evil.example' \
             -H 'Content-Type: application/x-www-form-urlencoded' \
-            --data 'state=ignored' http://127.0.0.1:18081/state)" = 403
+            --data 'state=ignored' http://127.0.0.1:18081/external-state)" = 403
       - name: Show logs if startup fails
         if: failure()
         run: docker logs --tail=100 freebieharbor-smoke || true

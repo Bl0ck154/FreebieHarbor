@@ -1,6 +1,6 @@
 # Contributing
 
-FreebieHarbor is deliberately small: one standard-library Python application, local SQLite, a Docker image and optional source adapters. You do not need Steam or Reddit credentials to run the tests.
+FreebieHarbor is deliberately small: one standard-library Python application, local SQLite, a Docker image and optional source adapters. You do not need Steam credentials or external accounts to run the tests.
 
 ## Make a change
 
