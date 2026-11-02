@@ -2,11 +2,13 @@ FROM python:3.13-alpine
 LABEL org.opencontainers.image.title="FreebieHarbor" \
       org.opencontainers.image.description="Self-hosted PC game giveaway radar" \
       org.opencontainers.image.source="https://github.com/Bl0ck154/FreebieHarbor" \
-      org.opencontainers.image.version="0.4.3" \
+      org.opencontainers.image.version="0.5.0" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
-RUN addgroup -S app && adduser -S -G app app && mkdir -p /data && chown app:app /data
+RUN addgroup -S app && adduser -S -G app app && mkdir -p /data /friends-data && chown app:app /data /friends-data
 COPY app/hub.py /app/hub.py
+COPY friends/portal.py /app/friends/portal.py
+COPY tools/friends_admin.py /app/tools/friends_admin.py
 USER app
 ENV DATA_DIR=/data PORT=8080 BIND_HOST=0.0.0.0 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 EXPOSE 8080

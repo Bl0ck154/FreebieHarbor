@@ -1,0 +1,38 @@
+# Optional separate service: invite-only accounts, no account automation.
+name: freebieharbor-friends
+services:
+  portal:
+    image: ghcr.io/bl0ck154/freebieharbor:v0.5.0
+    container_name: freebieharbor-friends
+    command: ["python3", "/app/friends/portal.py"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18084:8088"
+    environment:
+      FRIENDS_DB: "/friends-data/friends.db"
+      HUB_DB: "/hubdata/giveaways.db"
+      FRIENDS_HOST: "0.0.0.0"
+      FRIENDS_PORT: "8088"
+      FRIENDS_PUBLIC_ORIGIN: "${FRIENDS_PUBLIC_ORIGIN:-http://127.0.0.1:18084}"
+      FRIENDS_COOKIE_SECURE: "${FRIENDS_COOKIE_SECURE:-false}"
+    volumes:
+      - friends-data:/friends-data
+      - type: bind
+        source: ${FRIENDS_CATALOG_DIR:-../friends-public-data}
+        target: /hubdata
+        read_only: true
+    mem_limit: 128m
+    cpus: 0.2
+    pids_limit: 64
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"
+volumes:
+  friends-data:

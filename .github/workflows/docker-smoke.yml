@@ -38,9 +38,34 @@ jobs:
             -H 'Origin: https://evil.example' \
             -H 'Content-Type: application/x-www-form-urlencoded' \
             --data 'state=ignored' http://127.0.0.1:18081/external-state)" = 403
+      - name: Start isolated friends mode
+        run: |
+          docker run -d --name freebieharbor-friends-smoke \
+            -p 127.0.0.1:18084:8088 \
+            -e FRIENDS_HOST=0.0.0.0 \
+            -e FRIENDS_PORT=8088 \
+            -e FRIENDS_DB=/tmp/friends.db \
+            -e HUB_DB=/tmp/nonexistent-hub.db \
+            -e FRIENDS_PUBLIC_ORIGIN=http://127.0.0.1:18084 \
+            -e FRIENDS_COOKIE_SECURE=false \
+            freebieharbor:smoke python3 /app/friends/portal.py
+          for i in $(seq 1 20); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:18084/health -o /tmp/friends-health.json; then break; fi
+            sleep 1
+          done
+          python -c 'import json; assert json.load(open("/tmp/friends-health.json"))["mode"] == "friends"'
+          curl --fail --silent http://127.0.0.1:18084/login | grep -q 'Sign in'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18084/offers)" = 303
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            -H 'Origin: https://evil.example' -d 'username=x&password=y' \
+            http://127.0.0.1:18084/login)" = 403
       - name: Show logs if startup fails
         if: failure()
-        run: docker logs --tail=100 freebieharbor-smoke || true
+        run: |
+          docker logs --tail=100 freebieharbor-smoke || true
+          docker logs --tail=100 freebieharbor-friends-smoke || true
       - name: Stop smoke container
         if: always()
-        run: docker rm -f freebieharbor-smoke || true
+        run: |
+          docker rm -f freebieharbor-smoke || true
+          docker rm -f freebieharbor-friends-smoke || true

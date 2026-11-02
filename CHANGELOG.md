@@ -6,6 +6,13 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.5.0 — 2026-11-02
+
+- Add a separate invitation-only Friends portal with independent user profiles, sessions and offer states.
+- Read one shared public catalog while storing account states in a separate SQLite volume.
+- Add per-bot FreePackages configuration generator; Steam credentials and claiming remain outside the shared portal.
+- Keep the owner's SteamGifts, IndieGala and ASF deployment unchanged.
+
 ## v0.4.3 — 2026-11-02
 
 - Add a History filter for archived game offers while keeping current offers easy to find.
