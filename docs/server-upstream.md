@@ -3,7 +3,7 @@
 There are **three separate layers**:
 
 1. **FreebieHarbor GitHub repository** is the source of truth for the public Python app.
-2. **GHCR** holds versioned Docker images built from tagged GitHub releases (for example `ghcr.io/bl0ck154/freebieharbor:v0.4.1`).
+2. **GHCR** holds versioned Docker images built from tagged GitHub releases (for example `ghcr.io/bl0ck154/freebieharbor:v0.4.2`).
 3. **An installed server container** uses whichever image version its Compose file explicitly pins. It **does not automatically update** when code is pushed to GitHub.
 
 This is intentional: a developer's push should not silently restart a real user's server or migrate their database.
@@ -12,6 +12,7 @@ This is intentional: a developer's push should not silently restart a real user'
 
 Use `deploy/canary.compose.yml` to run FreebieHarbor separately, on **127.0.0.1:18083**, with its own `freebieharbor-canary_data` volume. It does not use the legacy Steam Farm database, accounts, Reddit publisher, IndieGala cookies or notification credentials.
 
+    mkdir -p exports
     docker compose -f deploy/canary.compose.yml pull
     docker compose -f deploy/canary.compose.yml up -d --no-build
     curl --fail http://127.0.0.1:18083/health
@@ -39,3 +40,16 @@ The Compose source itself can be synchronized with `git fetch` + `git pull --ff-
 Existing ArchiSteamFarm, SteamSelfGifter and IndieGala services are independent upstream applications with their own code, databases and policies. The old local giveaway inbox may also have private integrations or schema differences. **Do not** mount that live database into the public hub, switch its production port, replace its image or copy credentials as an upgrade shortcut.
 
 A future production migration should compare schemas, take a consistent backup, test the import offline, preserve manual claim history and use an explicit rollback. The canary is deliberately not that migration.
+
+## Safe statistics from an existing Steam Farm
+
+The server canary has read-only mounts for two **sanitized exports**. They are separate from live account files and contain no Steam tokens or ASF package IDs.
+
+Run the included standard-library exporter **as a user with read access to the source files**, replacing paths for your own installation:
+
+    python3 tools/export_rewards.py \
+      --steamgifts-source /path/to/steamselfgifter.db \
+      --asf-source /path/to/FreePackages.db \
+      --output-dir exports
+
+It writes only `entries(status)`, `giveaways(code,game_name,is_won,won_at)`, and a small ASF JSON document containing aggregate counts. Both writes use atomic replacement. The source files are opened read-only. Keep the exports directory out of Git. Restart the canary once after adding the read-only volume mount; later exports can refresh the files in place. These are **recorded** wins and plugin counters; they do not verify Steam library ownership.

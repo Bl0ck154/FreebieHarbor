@@ -26,7 +26,7 @@
     "name": "FreebieHarbor",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "Linux (Docker)",
-    "softwareVersion": "0.4.1",
+    "softwareVersion": "0.4.2",
     "description": "Self-hosted PC game giveaway tracking dashboard with optional Telegram alerts and read-only SteamGifts statistics.",
     "url": "https://bl0ck154.github.io/FreebieHarbor/",
     "downloadUrl": "https://github.com/Bl0ck154/FreebieHarbor/releases/latest",
@@ -92,7 +92,7 @@
 docker run -d --name freebieharbor --restart unless-stopped \
   -p 127.0.0.1:18081:8080 \
   -v freebieharbor-data:/data \
-  ghcr.io/bl0ck154/freebieharbor:v0.4.1</code></pre></div>
+  ghcr.io/bl0ck154/freebieharbor:v0.4.2</code></pre></div>
       <p class="note"><strong>Local-only by default.</strong> Open <code>http://127.0.0.1:18081</code> on the host. On a remote server, use an SSH tunnel. The dashboard has no built-in login, so do not expose it directly to the internet.</p>
       <div class="actions"><a class="button secondary" href="https://github.com/Bl0ck154/FreebieHarbor#quick-start">Full setup and configuration</a><a class="button secondary" href="https://github.com/Bl0ck154/FreebieHarbor/releases/latest">Latest release</a></div>
     </section>
