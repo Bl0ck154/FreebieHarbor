@@ -7,7 +7,7 @@ services:
     command: ["python3", "/app/friends/portal.py"]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8088/health', timeout=3).read()"]
+      test: ["CMD", "python3", "-c", "import os; from urllib.parse import urlsplit; from urllib.request import Request,urlopen; urlopen(Request('http://127.0.0.1:8088/health',headers={'Host':urlsplit(os.environ['FRIENDS_PUBLIC_ORIGIN']).netloc}),timeout=3).read()"]
       interval: 30s
       timeout: 5s
       start_period: 15s
