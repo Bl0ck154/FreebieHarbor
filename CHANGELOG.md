@@ -6,6 +6,14 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.4.0 — 2026-11-02
+
+- Retired the experimental Reddit source, routes and UI, and stopped advertising it.
+- Rebuilt README as a user-facing landing page, bringing the dashboard screenshot and setup instructions to the top.
+- Added an accessible, crawlable GitHub Pages product site with canonical metadata, Open Graph and SoftwareApplication structured data.
+- Refined discovery-oriented descriptions, documentation and feature positioning.
+- Preserved public giveaway sources, local claim tracking, Telegram alerts and read-only SteamGifts/ASF adapters.
+
 ## v0.3.1 — 2026-11-02
 
 - Public GHCR image publishing for stable release tags, with source version checks.

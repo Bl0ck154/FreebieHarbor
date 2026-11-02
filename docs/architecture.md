@@ -4,7 +4,6 @@
     FreeToKeep API ----+---> FreebieHarbor collector ---> SQLite ---> Local web dashboard
     GG.deals RSS ------+
     Alienware Arena ---+
-    Reddit publisher (optional) - - - - - - - - - - - ^
 
     SteamSelfGifter SQLite (optional, read-only) ------> Reward stats
 

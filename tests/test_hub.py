@@ -10,7 +10,6 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 DATA = tempfile.TemporaryDirectory()
 os.environ["DATA_DIR"] = DATA.name
-os.environ.pop("PUBLISHER_BASE", None)
 os.environ.pop("INDIEGALA_WORKER", None)
 spec = importlib.util.spec_from_file_location("freebieharbor_hub", ROOT / "app" / "hub.py")
 hub = importlib.util.module_from_spec(spec)
@@ -22,20 +21,11 @@ class HubTests(unittest.TestCase):
     def setUpClass(cls):
         hub.init_db()
 
-    def test_standalone_without_reddit_server(self):
-        self.assertEqual(hub.PUBLISHER_BASE, "")
-        self.assertEqual(hub.poll_subreddit("steam_giveaway"), 0)
 
     def test_url_validation(self):
         self.assertEqual(hub.safe_public_url("mailto:user@example.org"), "")
         self.assertEqual(hub.safe_public_url("https://example.org/game"), "https://example.org/game")
 
-    def test_reddit_classification(self):
-        post = {"title": "Steam key giveaway", "selftext": "Leave a comment below to enter.",
-                "url": "https://www.reddit.com/r/example/comments/1"}
-        self.assertTrue(hub.is_easy_reddit_giveaway(post))
-        post["selftext"] = "Join Discord to enter."
-        self.assertFalse(hub.is_easy_reddit_giveaway(post))
 
     def test_dashboard_without_dependencies(self):
         page = hub.render_page("/dashboard", {})
@@ -43,7 +33,7 @@ class HubTests(unittest.TestCase):
         self.assertNotIn("Generate AI reply", page)
 
     def test_release_version_matches_software(self):
-        self.assertEqual(hub.APP_VERSION, "0.3.1")
+        self.assertEqual(hub.APP_VERSION, "0.4.0")
 
     def test_optional_rewards_not_configured(self):
         with patch.dict(os.environ, {"STEAMGIFTS_DB": ""}):
@@ -102,9 +92,6 @@ class HubTests(unittest.TestCase):
 
 
     def test_url_and_redirect_safety(self):
-        self.assertEqual(hub.safe_reddit_url("/r/test/comments/1"), "https://www.reddit.com/r/test/comments/1")
-        self.assertEqual(hub.safe_reddit_url("javascript:alert(1)"), "")
-        self.assertEqual(hub.safe_reddit_url("https://evil.example/r/test"), "")
         self.assertEqual(hub._safe_return_to("/offers?page=2"), "/offers?page=2")
         self.assertEqual(hub._safe_return_to("/\\evil.example"), "/dashboard")
         self.assertEqual(hub._safe_return_to("//evil.example"), "/dashboard")
@@ -144,20 +131,6 @@ class HubTests(unittest.TestCase):
             self.assertEqual(hub.notify_new_offers()["sent"], 0)
 
 
-    def test_reddit_data_pruned_after_24_hours(self):
-        with hub.db() as conn:
-            conn.execute(
-                "INSERT INTO posts (post_id,subreddit,title,body,author,permalink,"
-                "requirement_type,first_seen,last_seen,created_utc) VALUES "
-                "(?,?,?,?,?,?,?,?,?,?)",
-                ("test-expired-reddit", "steam_giveaway", "Old post", "Old body", "anon",
-                 "/r/test/comments/old", "simple_comment",
-                 hub.now_iso(), hub.now_iso(), 1),
-            )
-        self.assertGreaterEqual(hub.prune_old_reddit_posts(), 1)
-        with hub.db() as conn:
-            count = conn.execute("SELECT COUNT(*) FROM posts WHERE post_id='test-expired-reddit'").fetchone()[0]
-        self.assertEqual(count, 0)
 
     def test_valid_local_post(self):
         from http.server import ThreadingHTTPServer
@@ -169,7 +142,7 @@ class HubTests(unittest.TestCase):
         try:
             base = "http://127.0.0.1:" + str(server.server_port)
             request = Request(
-                base + "/state", data=b"id=does-not-exist&state=ignored",
+                base + "/external-state", data=b"id=does-not-exist&state=ignored",
                 headers={"Origin": base, "Content-Type": "application/x-www-form-urlencoded"},
             )
             with urlopen(request, timeout=4) as result:
@@ -243,6 +216,46 @@ class HubTests(unittest.TestCase):
 
     def test_rewards_page_without_config(self):
         self.assertIn("Reward tracking", hub.render_page("/rewards", {}))
+
+
+    def test_retired_reddit_route_and_public_menu(self):
+        self.assertIsNone(hub.render_page("/reddit", {}))
+        page = hub.render_page("/dashboard", {})
+        self.assertIn('href="/offers"', page)
+        self.assertIn('href="/rewards"', page)
+        self.assertNotIn('href="/reddit"', page)
+        self.assertNotIn("Reddit posts", page)
+
+    def test_retired_reddit_http_api_is_not_exposed(self):
+        from http.server import ThreadingHTTPServer
+        from threading import Thread
+        from urllib.error import HTTPError
+        from urllib.request import urlopen
+        server = ThreadingHTTPServer(("127.0.0.1", 0), hub.Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with self.assertRaises(HTTPError) as err:
+                urlopen("http://127.0.0.1:" + str(server.server_port) + "/api/posts", timeout=4)
+            self.assertEqual(err.exception.code, 404)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=4)
+
+    def test_landing_page_has_real_seo_metadata(self):
+        import json
+        import re
+        content = (ROOT / "docs/site/index.html").read_text()
+        self.assertIn('rel="canonical"', content)
+        self.assertIn('property="og:title"', content)
+        self.assertIn('property="og:image"', content)
+        self.assertIn('name="description"', content)
+        result = re.search(r'<script type="application/ld\+json">(.*?)</script>', content, re.S)
+        self.assertIsNotNone(result)
+        data = json.loads(result.group(1))
+        self.assertEqual(data["@type"], "SoftwareApplication")
+        self.assertEqual(data["softwareVersion"], hub.APP_VERSION)
 
 
 if __name__ == "__main__":

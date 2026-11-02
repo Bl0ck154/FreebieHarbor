@@ -1,175 +1,98 @@
 # ⚓ FreebieHarbor
 
-[![Python checks](https://github.com/Bl0ck154/FreebieHarbor/actions/workflows/tests.yml/badge.svg)](https://github.com/Bl0ck154/FreebieHarbor/actions/workflows/tests.yml)
-[![Release](https://img.shields.io/github/v/release/Bl0ck154/FreebieHarbor?include_prereleases)](https://github.com/Bl0ck154/FreebieHarbor/releases)
-[![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+### Your self-hosted free PC games tracker — one dashboard, no accounts to connect.
 
+**Track PC game giveaways, get optional Telegram alerts, and keep your claim history in one place.** FreebieHarbor is an open-source Docker app that collects public free-game offers and stores them locally. Optional read-only adapters show SteamGifts wins and ArchiSteamFarm FreePackages counters.
 
-**A self-hosted radar for free PC games and giveaways.**
+[![CI](https://github.com/Bl0ck154/FreebieHarbor/actions/workflows/tests.yml/badge.svg)](https://github.com/Bl0ck154/FreebieHarbor/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/Bl0ck154/FreebieHarbor)](https://github.com/Bl0ck154/FreebieHarbor/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Docker GHCR](https://img.shields.io/badge/Docker-GHCR-blue?logo=docker)](https://github.com/users/Bl0ck154/packages/container/package/freebieharbor)
 
-FreebieHarbor collects free-game offers in a local searchable dashboard. It keeps a history of offers, supports optional read-only SteamGifts and ASF package statistics and uses no AI tokens, Steam credentials or paid APIs.
+[**Website**](https://bl0ck154.github.io/FreebieHarbor/) · [**Latest release**](https://github.com/Bl0ck154/FreebieHarbor/releases/latest) · [**Install guide**](#quick-start) · [**Help / discussions**](https://github.com/Bl0ck154/FreebieHarbor/discussions)
 
-This is the public 0.x release of a standalone dashboard extracted from a private Steam automation stack. It does not automatically enter giveaways.
+![FreebieHarbor local free game tracking dashboard with fictional sample offers](docs/assets/dashboard.png)
 
-## Install
+*Real application screenshot using clearly labeled fictional demo offers.*
 
-### Option A — Prebuilt Docker image (Linux amd64)
+## Why FreebieHarbor?
 
-No cloning or local image build required. The release image is [public on GHCR](https://github.com/users/Bl0ck154/packages/container/package/freebieharbor).
+You don't need to check multiple giveaway websites every day. FreebieHarbor periodically checks supported sources, puts offers into a searchable web dashboard and lets you mark them **claimed** or **ignored**.
 
-    docker volume create freebieharbor-data
-    docker run -d --name freebieharbor --restart unless-stopped \
-      -p 127.0.0.1:18081:8080 \
-      -v freebieharbor-data:/data \
-      ghcr.io/bl0ck154/freebieharbor:v0.3.1
+- **Free games in one feed** — GamerPower, FreeToKeep, GG.deals freebies and best-effort Alienware Arena discoveries.
+- **Your history stays local** — SQLite storage, search, source filters and claimed/ignored states.
+- **Optional Telegram alerts** — new offers and recorded SteamGifts wins, with deduplication.
+- **Optional reward insights** — read-only SteamSelfGifter wins and ASF FreePackages plugin counters from snapshots.
+- **No AI tokens, Steam login or paid API** required for the core. No automated contest entries or game claiming.
 
-Open **http://127.0.0.1:18081**. Docker stores the SQLite data in a named volume, so replacing the container does not erase the local history. The default image has no Steam login, AI API, Telegram alerts or optional provider connectors configured.
+## Quick start
 
-To upgrade an installation made with Option A, pull the new tagged image and replace the container while reusing the same volume. For example, replace the tag in the command above after:
+**Linux amd64 • Docker installed • no source build required.**
 
-    docker pull ghcr.io/bl0ck154/freebieharbor:v0.3.1
-    docker stop freebieharbor && docker rm freebieharbor
+```bash
+docker volume create freebieharbor-data
+docker run -d --name freebieharbor --restart unless-stopped \
+  -p 127.0.0.1:18081:8080 \
+  -v freebieharbor-data:/data \
+  ghcr.io/bl0ck154/freebieharbor:v0.4.0
+```
 
-Use the new published version tag in the final `docker run` command. The `:latest` tag also tracks the latest stable release, but a versioned tag is recommended for reproducibility.
+Open **http://127.0.0.1:18081** on the host. For a remote server, connect over SSH:
 
-### Option B — Build locally with Docker Compose
+```bash
+ssh -L 18081:127.0.0.1:18081 user@your-server
+```
 
-This works with other architectures supported by the Python base image, such as Linux arm64:
+Then open the same address in your local browser. The dashboard is **not authenticated** and deliberately binds to localhost. Don't expose it directly to the public internet.
 
-    git clone https://github.com/Bl0ck154/FreebieHarbor.git
-    cd FreebieHarbor
-    docker compose up -d
+**Linux arm64 or prefer building from source?** Use Docker Compose instead:
 
-The Compose configuration binds the host port to localhost and provides optional Telegram, SteamGifts and ASF integrations through local environment variables and separate read-only volume overlays.
+```bash
+git clone https://github.com/Bl0ck154/FreebieHarbor.git
+cd FreebieHarbor
+docker compose up -d
+```
 
-### Connecting from another computer
+To update the prebuilt container, read [upgrade instructions](docs/troubleshooting.md#how-do-i-update-the-prebuilt-docker-container). Use the same `freebieharbor-data` volume to keep your database.
 
-For either option the dashboard is intentionally bound to the server's loopback interface. From your laptop or desktop, connect through SSH:
+## What is supported?
 
-    ssh -L 18081:127.0.0.1:18081 user@your-server
-
-Then open **http://127.0.0.1:18081** in your browser. Do not forward the unauthenticated dashboard directly onto the public internet.
-
-## Dashboard preview
-
-![FreebieHarbor dashboard using explicitly fictional demo offers](docs/assets/dashboard.png)
-
-*Screenshot from the real local web app, seeded with fictional sample offers. No personal accounts or game claims are shown.*
-
-## At a glance
-
-| Source / integration | In the default install? | What it does |
+| Feature | Status | Notes |
 | --- | --- | --- |
-| GamerPower | Yes | Tracks active game giveaways |
-| FreeToKeep.gg | Yes | Tracks free-to-keep offers |
-| GG.deals RSS | Yes | Discovers limited-time PC game freebies |
-| Alienware Arena | Best effort | Finds public key drops; some VPS IPs are blocked |
-| Reddit | Optional | Requires a compatible, authorized Publisher API |
-| SteamSelfGifter | Optional | Read-only entry and win counts from a SQLite snapshot |
-| ArchiSteamFarm / FreePackages | Optional | Read-only plugin package counters from a separate JSON snapshot |
-| IndieGala | No | Manual visit/discovery only; no automated entries |
+| GamerPower free game offers | Included | Public API; availability varies |
+| FreeToKeep offers | Included | Public API |
+| GG.deals freebies | Included | RSS discovery |
+| Alienware Arena key drops | Best effort | May block datacenter IPs |
+| Offer search, filters and claim status | Included | Local SQLite dashboard |
+| Telegram new-offer alerts | Optional | User supplies their own bot token |
+| SteamGifts entries and recorded wins | Optional | Read-only SteamSelfGifter SQLite snapshot |
+| SteamGifts win alerts | Optional | Requires updated snapshot and Telegram |
+| ASF FreePackages counters | Optional | Read-only JSON snapshot; **not** confirmed Steam ownership |
 
-## Features
+**Limits:** This is a discovery and tracking tool, not an auto-claimer. Offers may expire, run out of keys or be region restricted. No winning probabilities, Steam licenses or rewards are guaranteed. Independent upstream tools are not bundled.
 
-- GamerPower, FreeToKeep, GG.deals RSS and Alienware Arena offer discovery.
-- Search, source filters, offer history and manual refresh.
-- Optional Telegram notifications for *new* offers, grouped into one message per refresh. First enabled scan establishes a baseline with no alert flood.
-- Periodic collection and local SQLite storage.
-- Optional Reddit discovery through a compatible external Publisher API (off by default).
-- Optional read-only SteamSelfGifter statistics, recent wins, and Telegram win notifications.
-- Optional ASF FreePackages snapshot counters; no ASF credentials needed.
-- JSON endpoints: /health, /api/external-offers, /api/posts, /api/wins and /api/rewards.
-- No external AI, Steam password or API key required.
+## Configure optional features
 
-Availability of public sources varies by region and IP. Certain providers block datacenter traffic. No prizes or free-game claims are guaranteed. The 0.x API can change between minor releases; see the changelog.
+The defaults work without creating `.env`. For Docker Compose, copy `.env.example` to `.env` before enabling integrations.
 
-## Configuration
+| Environment variable | Purpose |
+| --- | --- |
+| `POLL_SECONDS` | Source refresh interval (default 1200 seconds, minimum 300) |
+| `NOTIFY_NEW_OFFERS` | Enable Telegram alerts for newly found offers |
+| `NOTIFY_NEW_WINS` | Enable Telegram alerts for newly recorded SteamGifts wins |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Required only for Telegram |
+| `STEAMGIFTS_DB` | Read-only SteamSelfGifter SQLite snapshot inside the container |
+| `ASF_PACKAGES_DB` | Read-only FreePackages JSON snapshot inside the container |
+| `ALLOWED_HOSTS` | Allowed local/reverse-proxy hostnames |
 
-Copy .env.example to .env only if you need to change defaults.
+Telegram alerts establish a silent baseline on the first successful run, so existing offers are not sent as a flood. To mount a snapshot, see [SteamGifts and ASF adapters](docs/architecture.md); **never mount account sessions or ASF's main token database**.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| FREEBIEHARBOR_PORT | 18081 | Local dashboard port |
-| POLL_SECONDS | 1200 | Refresh cycle, minimum 300 |
-| PUBLISHER_BASE | blank | Optional compatible Reddit API |
-| INDIEGALA_WORKER | blank | Optional separate discovery worker |
-| STEAMGIFTS_DB | blank | Optional read-only SteamSelfGifter DB path |
-| ASF_PACKAGES_DB | blank | Optional read-only FreePackages metadata JSON path |
-| NOTIFY_NEW_OFFERS | false | Opt in to new-offer Telegram alerts |
-| NOTIFY_NEW_WINS | false | Opt in to Telegram alerts for new recorded SteamGifts wins |
-| TELEGRAM_BOT_TOKEN | blank | Bot token; never commit or log it |
-| TELEGRAM_CHAT_ID | blank | Telegram recipient ID |
-| ALLOWED_HOSTS | localhost,127.0.0.1,::1 | Hostnames allowed to access the dashboard |
+## About the project
 
-### Telegram alerts
+FreebieHarbor is a lightweight Python 3.13 application using only the standard library, SQLite and Docker. It is **not affiliated with Valve, SteamGifts, Alienware Arena, GG.deals or the underlying offer providers**. It links to [SteamSelfGifter](https://github.com/kernelcoffee/SteamSelfGifter), [ArchiSteamFarm](https://github.com/JustArchiNET/ArchiSteamFarm) and [FreePackages](https://github.com/Citrinate/FreePackages) as optional independent integrations; their respective licenses apply.
 
-Set NOTIFY_NEW_OFFERS=true plus TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your local .env, then restart with docker compose up -d. The first successful refresh builds the baseline without sending old results. Later new offers are delivered in a single HTML-formatted message (up to six links, with a total count). Failures retry on the following poll. Tokens are never returned by the dashboard. To receive win notifications, enable NOTIFY_NEW_WINS=true and connect the SteamSelfGifter snapshot. Win notifications start with a silent baseline and then notify only newly recorded wins as the snapshot changes.
+**Documentation:** [How it works](docs/architecture.md) · [Troubleshooting](docs/troubleshooting.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party credits](THIRD_PARTY.md)
 
-### Reddit availability
+**Developers:** `python3 -m unittest discover -s tests -v` runs the offline regression tests. [Try a fictional, offline demo](docs/troubleshooting.md#how-do-i-run-a-fully-offline-preview) without an account or network polling.
 
-Reddit has announced changes to its public Data API and the end of traditional RSS support on November 13, 2026. We do not rely on unauthenticated Reddit scraping or RSS in the default release. See the official Reddit Developer Platform for future supported access.
-
-The Reddit adapter expects a compatible backend implementing /internal/reddit/subreddit and /internal/reddit/preflight. A first-party standalone Reddit adapter is planned. Without that backend, the rest of the radar works. Reddit posts are pruned after 24 hours; a compatible backend must also remove deleted content promptly to meet Reddit requirements.
-
-For SteamGifts stats, make a consistent SQLite snapshot and use the optional overlay:
-
-    STEAMGIFTS_DB_SOURCE=/absolute/path/to/steamgifts-snapshot.db docker compose -f compose.yml -f compose.steamgifts.yml up -d
-
-See [the architecture notes](docs/architecture.md) for the safe snapshot command. Do not mount or publish the SteamSelfGifter config directory, as it can hold account sessions.
-
-This project attributes GamerPower for its public [free games API](https://www.gamerpower.com/api-read).
-
-### ASF FreePackages read-only adapter
-
-The optional ASF adapter can read the `SeenPackages` and `NewOwnedPackages` array counts from a *snapshot* of the FreePackages plugin database (JSON file). These fields represent plugin bookkeeping, **not proof of Steam ownership or newly activated games**. Never mount or publish the main ASF configuration, which can include package tokens.
-
-    ASF_PACKAGES_SOURCE=/absolute/path/to/freepackages-snapshot.json docker compose -f compose.yml -f compose.asf.yml up -d
-
-The stats appear under the **Rewards** tab and in `/api/rewards`. The file must exist before enabling the overlay.
-
-## Related projects
-
-- SteamSelfGifter: https://github.com/kernelcoffee/SteamSelfGifter
-- ArchiSteamFarm: https://github.com/JustArchiNET/ArchiSteamFarm
-- FreePackages: https://github.com/Citrinate/FreePackages
-
-These are upstream tools, not dependencies installed or bundled by this Compose file. See THIRD_PARTY.md.
-
-## Project documentation
-
-- [Architecture and safe database snapshots](docs/architecture.md)
-- [Setup troubleshooting](docs/troubleshooting.md)
-- [Change history](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security and safe deployment](SECURITY.md)
-- [Third-party attribution](THIRD_PARTY.md)
-
-Questions and ideas: use [GitHub Discussions](https://github.com/Bl0ck154/FreebieHarbor/discussions). Bugs and supported source requests have guided [issue templates](https://github.com/Bl0ck154/FreebieHarbor/issues/new/choose).
-
-## Development
-
-Python 3.13 standard library, no pip dependencies.
-
-    python3 -m unittest discover -s tests -v
-    DATA_DIR=./local-data PORT=8080 python3 app/hub.py
-
-## Try the dashboard with fictional demo data
-
-You can preview the layout without any external API requests or account data:
-
-    DATA_DIR=./demo-data python3 tools/seed_demo.py
-    DATA_DIR=./demo-data PORT=8080 python3 app/hub.py
-
-Open http://127.0.0.1:8080/dashboard. The demo data is explicitly labeled and the source poller is disabled. The fixture script refuses to overwrite an existing database.
-
-## Health and tests
-
-The HTTP health endpoint is available at /health, including the running app version. Run local tests with Python 3.13; GitHub Actions runs the same suite on pushes and pull requests. Docker Compose config validation is separate from a full image smoke test.
-
-## Roadmap
-
-Native Reddit integration (subject to provider permission); verified ASF license ownership adapter; source health metrics; more provider mocks; source refresh reliability.
-
-For the current design, see docs/architecture.md.
-
-This project is not affiliated with Steam, SteamGifts, IndieGala or any game publisher. MIT license.
+MIT licensed. Questions, bug reports and feature discussions are welcome via [GitHub Discussions](https://github.com/Bl0ck154/FreebieHarbor/discussions) and [Issues](https://github.com/Bl0ck154/FreebieHarbor/issues).
