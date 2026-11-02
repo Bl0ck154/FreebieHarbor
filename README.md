@@ -35,7 +35,7 @@ docker volume create freebieharbor-data
 docker run -d --name freebieharbor --restart unless-stopped \
   -p 127.0.0.1:18081:8080 \
   -v freebieharbor-data:/data \
-  ghcr.io/bl0ck154/freebieharbor:v0.6.0
+  ghcr.io/bl0ck154/freebieharbor:v0.7.0
 ```
 
 Open **http://127.0.0.1:18081** on the host. For a remote server, connect over SSH:
@@ -92,7 +92,7 @@ Telegram alerts establish a silent baseline on the first successful run, so exis
 
 FreebieHarbor is a lightweight Python 3.13 application using only the standard library, SQLite and Docker. It is **not affiliated with Valve, SteamGifts, Alienware Arena, GG.deals or the underlying offer providers**. It links to [SteamSelfGifter](https://github.com/kernelcoffee/SteamSelfGifter), [ArchiSteamFarm](https://github.com/JustArchiNET/ArchiSteamFarm) and [FreePackages](https://github.com/Citrinate/FreePackages) as optional independent integrations; their respective licenses apply.
 
-**Friends preview:** [Invitation-only personal dashboards](docs/friends-mode.md) · [Verified Steam identity and one shared ASF](docs/steam-integration.md) (optional separate container; no central Steam login or auto-claim).
+**Friends preview:** Up to five verified Steam accounts per profile (five ASF bot slots total in pilot), separate pending setup for each; [invitation-only personal dashboards](docs/friends-mode.md) · [Verified Steam identity and one shared ASF](docs/steam-integration.md) (optional separate container; no central Steam login or auto-claim).
 
 **Documentation:** [Server deployments and upstream updates](docs/server-upstream.md) · [Friends-mode design](docs/friends-mode.md) · [How it works](docs/architecture.md) · [Troubleshooting](docs/troubleshooting.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party credits](THIRD_PARTY.md)
 

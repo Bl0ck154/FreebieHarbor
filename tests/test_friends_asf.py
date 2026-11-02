@@ -6,34 +6,65 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('provision', ROOT/'tools/provision_friends_asf.py')
+spec = importlib.util.spec_from_file_location("provision", ROOT / "tools/provision_friends_asf.py")
 provision = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(provision)
 
+
 class ProvisionTests(unittest.TestCase):
-    def test_verified_bot_is_disabled_and_without_secrets(self):
-        with tempfile.TemporaryDirectory() as d:
-            root=Path(d)
-            db,config=root/'users.db',root/'config'
-            with sqlite3.connect(db) as c:
-                c.execute('CREATE TABLE users(id INTEGER,steam_id TEXT,steam_login TEXT,steam_automation INTEGER,disabled INTEGER)')
-                c.execute('INSERT INTO users VALUES(1,?,?,1,0)',('76561198000000001','verified_friend'))
-                c.execute('INSERT INTO users VALUES(2,?,?,1,1)',('76561198000000002','disabled_friend'))
-            self.assertEqual(len(provision.provision(db,config)),1)
-            self.assertFalse(config.exists())
-            self.assertEqual(len(provision.provision(db,config,apply=True)),1)
-            files=list(config.glob('*.json'))
-            self.assertEqual(len(files),1)
-            data=json.loads(files[0].read_text())
-            self.assertFalse(data['Enabled'])
-            self.assertTrue(data['EnableFreePackages'])
-            self.assertTrue(data['FreePackagesFilters'][0]['NoCostOnly'])
-            self.assertNotIn('SteamPassword',data)
-            self.assertEqual(provision.provision(db,config,apply=True)[0]['status'],'already configured; unchanged')
-    def test_limit_enforced(self):
-        with tempfile.TemporaryDirectory() as d:
-            base=Path(d)
-            with sqlite3.connect(base/'users.db') as c:
-                c.execute('CREATE TABLE users(id INTEGER,steam_id TEXT,steam_login TEXT,steam_automation INTEGER,disabled INTEGER)')
-                for i in range(1,4):c.execute('INSERT INTO users VALUES(?,?,?,?,?)',(i,'76561198000000001','friend',1,0))
-            with self.assertRaises(ValueError):provision.provision(base/'users.db',base/'config',limit=2)
+    def fixture(self, directory):
+        path = Path(directory)/"users.db"
+        with sqlite3.connect(path) as db:
+            db.execute("CREATE TABLE users(id INTEGER PRIMARY KEY,disabled INTEGER)")
+            db.execute("CREATE TABLE steam_accounts(id INTEGER PRIMARY KEY,user_id INTEGER,steam_id TEXT,login TEXT,requested INTEGER)")
+            db.executemany("INSERT INTO users VALUES(?,?)", [(1,0),(2,0)])
+            db.executemany("INSERT INTO steam_accounts VALUES(?,?,?,?,?)", [
+                (101,1,"76561198000000001","friend_first",1),
+                (102,1,"76561198000000002","friend_second",1),
+                (103,2,"76561198000000003","other_friend",1),
+            ])
+        return path
+
+    def test_multiple_accounts_share_process_but_have_separate_disabled_configs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db = self.fixture(directory)
+            target = Path(directory)/"config"
+            self.assertEqual(len(provision.provision(db,target)),3)
+            self.assertFalse(target.exists())
+            self.assertEqual(len(provision.provision(db,target,apply=True)),3)
+            files = sorted(target.glob("fh_account_*.json"))
+            self.assertEqual(len(files),3)
+            self.assertEqual([f.stem for f in files], ["fh_account_101","fh_account_102","fh_account_103"])
+            settings = [json.loads(f.read_text()) for f in files]
+            self.assertTrue(all(not cfg["Enabled"] for cfg in settings))
+            self.assertTrue(all(cfg["FreePackagesFilters"][0]["NoCostOnly"] for cfg in settings))
+            self.assertTrue(all("SteamPassword" not in cfg for cfg in settings))
+            self.assertTrue(all("SteamGuard" not in cfg for cfg in settings))
+            self.assertTrue(all(entry["status"] == "present; unchanged"
+                                for entry in provision.provision(db,target,apply=True)))
+
+    def test_withdrawal_disables_previously_enabled_bot_without_other_bot_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db=self.fixture(directory)
+            target=Path(directory)/"config"
+            provision.provision(db,target,apply=True)
+            first=target/"fh_account_101.json"
+            second=target/"fh_account_102.json"
+            first_data=json.loads(first.read_text())
+            first_data["Enabled"]=True
+            first_data["SteamPassword"]="do-not-lose-existing-session-data"
+            first.write_text(json.dumps(first_data))
+            original_second=second.read_bytes()
+            with sqlite3.connect(db) as conn:
+                conn.execute("UPDATE steam_accounts SET requested=0 WHERE id=101")
+            self.assertIn("disabled after opt-out", [r["status"] for r in provision.provision(db,target,apply=True)])
+            result=json.loads(first.read_text())
+            self.assertFalse(result["Enabled"])
+            self.assertEqual(result["SteamPassword"],"do-not-lose-existing-session-data")
+            self.assertEqual(second.read_bytes(), original_second)
+
+    def test_total_bot_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db=self.fixture(directory)
+            with self.assertRaises(ValueError):
+                provision.provision(db, Path(directory)/"config", limit=2)

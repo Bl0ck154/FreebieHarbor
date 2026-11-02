@@ -13,10 +13,9 @@ from datetime import datetime, timezone
 from http import cookies
 from contextlib import closing
 from urllib.request import Request, urlopen
-from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit, urlencode, urlencode
+from urllib.parse import parse_qs, urlsplit, urlencode
 
 FRIENDS_DB = Path(os.getenv("FRIENDS_DB", "./friends-data/friends.db"))
 HUB_DB = Path(os.getenv("HUB_DB", "./demo-data/giveaways.db"))
@@ -28,6 +27,8 @@ SESSION_SECONDS = 86400 * 7
 LOCK = threading.RLock()
 FAILED_LOGINS = {}
 USERNAME_RE = re.compile(r"^[a-z][a-z0-9_.-]{2,23}$")
+MAX_STEAM_ACCOUNTS_PER_USER = 5
+MAX_STEAM_ACCOUNTS_TOTAL = 10
 
 
 def database():
@@ -74,6 +75,15 @@ def init_db():
             updated_at INTEGER NOT NULL,
             PRIMARY KEY(user_id,offer_id)
         );
+        CREATE TABLE IF NOT EXISTS steam_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            steam_id TEXT NOT NULL UNIQUE,
+            login TEXT,
+            requested INTEGER NOT NULL DEFAULT 0 CHECK(requested IN (0,1)),
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS steam_accounts_owner ON steam_accounts(user_id);
         CREATE TABLE IF NOT EXISTS steam_link_requests (
             state_hash TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -97,6 +107,17 @@ def init_db():
         if "steam_automation" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN steam_automation INTEGER NOT NULL DEFAULT 0")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS user_steam_id ON users(steam_id)")
+        # One-time migration: the old 1-account profile fields become the first
+        # independently addressable Steam account. Re-running is idempotent.
+        for legacy in conn.execute("""
+            SELECT id,steam_id,steam_login,steam_automation FROM users
+            WHERE steam_id IS NOT NULL AND steam_id != ''
+        """).fetchall():
+            conn.execute("""
+                INSERT OR IGNORE INTO steam_accounts(user_id,steam_id,login,requested,created_at)
+                VALUES(?,?,?,?,?)
+            """, (legacy["id"],legacy["steam_id"],legacy["steam_login"],
+                  1 if legacy["steam_automation"] and legacy["steam_login"] else 0, int(time.time())))
 
 
 def digest(value):
@@ -175,10 +196,61 @@ def get_session(raw):
         return None
     with LOCK, database() as conn:
         return conn.execute("""
-            SELECT users.id,users.username,users.is_admin,users.steam_id,users.steam_login,users.steam_automation,sessions.csrf,sessions.expires_at
+            SELECT users.id,users.username,users.is_admin,sessions.csrf,sessions.expires_at
             FROM sessions JOIN users ON users.id=sessions.user_id
             WHERE sessions.token_hash=? AND sessions.expires_at>? AND users.disabled=0
         """, (digest(raw),int(time.time()))).fetchone()
+
+
+def steam_accounts(user_id):
+    with LOCK, database() as conn:
+        return conn.execute(
+            "SELECT id,steam_id,login,requested FROM steam_accounts WHERE user_id=? ORDER BY id",
+            (user_id,),
+        ).fetchall()
+
+
+def request_steam_activation(user_id, account_id, login, consent):
+    if not consent or not re.fullmatch(r"[A-Za-z0-9_]{3,64}", login):
+        return False
+    with LOCK, database() as conn:
+        updated = conn.execute(
+            "UPDATE steam_accounts SET login=?,requested=1 WHERE id=? AND user_id=?",
+            (login,account_id,user_id),
+        )
+        return updated.rowcount == 1
+
+
+def cancel_steam_activation(user_id, account_id):
+    with LOCK, database() as conn:
+        changed = conn.execute(
+            "UPDATE steam_accounts SET requested=0 WHERE id=? AND user_id=?",
+            (account_id,user_id),
+        )
+        return changed.rowcount == 1
+
+
+def add_verified_steam_account(user_id, steam_id):
+    if not re.fullmatch(r"7656119[0-9]{10}", steam_id):
+        return False
+    with LOCK, database() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        previous = conn.execute(
+            "SELECT user_id FROM steam_accounts WHERE steam_id=?", (steam_id,),
+        ).fetchone()
+        if previous:
+            return previous["user_id"] == user_id
+        personal_count = conn.execute(
+            "SELECT count(*) FROM steam_accounts WHERE user_id=?", (user_id,),
+        ).fetchone()[0]
+        overall_count = conn.execute("SELECT count(*) FROM steam_accounts").fetchone()[0]
+        if personal_count >= MAX_STEAM_ACCOUNTS_PER_USER or overall_count >= MAX_STEAM_ACCOUNTS_TOTAL:
+            return False
+        conn.execute(
+            "INSERT INTO steam_accounts(user_id,steam_id,created_at) VALUES(?,?,?)",
+            (user_id,steam_id,int(time.time())),
+        )
+        return True
 
 
 STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login"
@@ -263,9 +335,23 @@ def verify_steam_openid(user_id, values):
         if not state or state["user_id"] != user_id or state["expires_at"] < int(time.time()):
             return False
         conn.execute("DELETE FROM steam_openid_nonces WHERE expires_at < ?",(int(time.time()),))
+        existing = conn.execute(
+            "SELECT user_id FROM steam_accounts WHERE steam_id=?", (match.group(1),),
+        ).fetchone()
+        if existing is not None and existing["user_id"] != user_id:
+            return False
+        if existing is None:
+            count = conn.execute("SELECT count(*) FROM steam_accounts WHERE user_id=?", (user_id,)).fetchone()[0]
+            total = conn.execute("SELECT count(*) FROM steam_accounts").fetchone()[0]
+            if count >= MAX_STEAM_ACCOUNTS_PER_USER or total >= MAX_STEAM_ACCOUNTS_TOTAL:
+                return False
         try:
             conn.execute("INSERT INTO steam_openid_nonces VALUES(?,?)", (digest(nonce),now+1200))
-            conn.execute("UPDATE users SET steam_id=?,steam_login=NULL,steam_automation=0 WHERE id=?", (match.group(1), user_id))
+            if existing is None:
+                conn.execute(
+                    "INSERT INTO steam_accounts(user_id,steam_id,created_at) VALUES(?,?,?)",
+                    (user_id,match.group(1),now),
+                )
         except sqlite3.IntegrityError:
             conn.rollback()
             return False
@@ -501,35 +587,47 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(403,"Admin access required","text/plain")
             return self.respond(200,page("Admin",admin_content(user),user["username"],True))
         if path.path == "/steam-setup":
-            verified = user["steam_id"]
-            status = ("Request recorded for "+html.escape(user["steam_login"] or "")+
-                      ". Awaiting individual ASF authorization." if user["steam_automation"] else
-                      "No ASF account activation is enabled yet.")
-            fields = ("<form method='post' action='/steam/automation'>"+hidden("csrf",user["csrf"])+
-                      "<label>Steam account login name (not password)</label>"
-                      "<input name='steam_login' autocomplete='off' maxlength='64' required>"
-                      "<label><input type='checkbox' name='consent' value='yes' required> "
-                      "I understand ASF will need a separate Steam authorization and may activate free packages.</label>"
-                      "<button>Request ASF connection</button></form>"+
-                      "<form method='post' action='/steam/automation'>"+hidden("csrf",user["csrf"])+
-                      "<button name='action' value='disable'>Cancel pending setup request</button></form>")
-            if not verified:
-                fields = "<p>First verify SteamID through the Account page.</p>"
-            text = ("<h1>Free-to-keep setup</h1><div class='card'><p>Verified SteamID: "+
-                    html.escape(verified or "not linked")+"</p><p>"+status+"</p>"+fields+
-                    "<p>One shared ASF service can handle multiple bot accounts with separate bot configurations. "
-                    "No Steam password or Steam Guard code is collected here. Steam identity verification "
-                    "alone does not activate licenses; a separate Steam session is needed.</p>"
-                    "<p><a href='https://github.com/Citrinate/FreePackages'>FreePackages documentation</a></p></div>")
-            return self.respond(200,page("Steam setup",text,user["username"],bool(user["is_admin"])))
-        if path.path == "/account":
-            steam_status = ("Verified SteamID: "+html.escape(user["steam_id"])) if user["steam_id"] else "No Steam account linked"
-            body = (f'<h1>Account</h1><div class="card"><p>Signed in as <b>{html.escape(user["username"])}</b></p>'
-                    f'<p>{steam_status}</p>'
-                    '<p class="muted">Steam sign-in proves account ownership but does NOT authorize ASF license activation. '
-                    'FreebieHarbor never asks for your Steam password or Steam Guard codes.</p>'
+            items = steam_accounts(user["id"])
+            cards = []
+            for account in items:
+                state = ("Awaiting Steam/ASF login — activation NOT active" if account["requested"]
+                         else "Not requested")
+                login = html.escape(account["login"] or "",quote=True)
+                cards.append(
+                    '<section class="card"><b>SteamID '+html.escape(account["steam_id"])+'</b>'
+                    '<p class="muted">'+state+'</p>'
+                    '<form method="post" action="/steam/automation">'+
+                    hidden("csrf",user["csrf"])+hidden("account_id",str(account["id"]))+
+                    '<label>Steam login name (not password)</label>'
+                    '<input name="steam_login" value="'+login+'" maxlength="64" required>'
+                    '<label><input type="checkbox" name="consent" value="yes" required>'
+                    ' I agree to request a dedicated ASF bot for this Steam account.</label>'
+                    '<p><button>Request connection</button></p></form>'
+                    '<form method="post" action="/steam/automation">'+
+                    hidden("csrf",user["csrf"])+hidden("account_id",str(account["id"]))+
+                    '<button name="action" value="disable">Cancel request</button></form>'
+                    '</section>'
+                )
+            info = ('<h1>Steam accounts</h1><p class="muted">'
+                    'One Friends profile may link multiple independently verified Steam accounts. '
+                    'All share one background ASF process, but each account gets a separate bot. '
+                    'No Steam passwords or Guard codes are collected here. '
+                    'Preparing a bot does not mean it is authorized or receiving games.</p>'
                     '<form method="post" action="/steam/link">'+hidden("csrf",user["csrf"])+
-                    '<button>Verify Steam identity</button></form></div>')
+                    '<button>Link another Steam account</button></form>'+
+                    (''.join(cards) if cards else '<p>No verified Steam accounts yet.</p>'))
+            return self.respond(200,page("Steam setup",info,user["username"],bool(user["is_admin"])))
+        if path.path == "/account":
+            items = steam_accounts(user["id"])
+            label = ', '.join(html.escape(r["steam_id"]) for r in items) if items else "None yet"
+            body = (f'<h1>Account</h1><div class="card"><p>Signed in as <b>{html.escape(user["username"])}</b></p>'
+                    f'<p>Linked Steam accounts: {len(items)} / {MAX_STEAM_ACCOUNTS_PER_USER}</p>'
+                    f'<p class="muted">{label}</p>'
+                    '<form method="post" action="/steam/link">'+hidden("csrf",user["csrf"])+
+                    '<button>Link Steam account</button></form>'
+                    '<p class="muted">Steam OpenID verifies identity only. '
+                    'Individual ASF Steam authentication is a separate step.</p>'
+                    '<a href="/steam-setup">Manage Steam accounts</a></div>')
             return self.respond(200,page("Account",body,user["username"],bool(user["is_admin"])))
         return self.respond(404,"Not found","text/plain")
 
@@ -575,15 +673,18 @@ class Handler(BaseHTTPRequestHandler):
         if not hmac.compare_digest(item("csrf"),user["csrf"]):
             return self.respond(403,"Invalid CSRF token","text/plain")
         if path == "/steam/automation":
+            try:
+                account_id = int(item("account_id"))
+            except ValueError:
+                return self.respond(400,"Invalid Steam account","text/plain")
             if item("action") == "disable":
-                with LOCK, database() as conn:
-                    conn.execute("UPDATE users SET steam_automation=0 WHERE id=?",(user["id"],))
-                return self.redirect("/steam-setup")
-            name = item("steam_login")
-            if not user["steam_id"] or item("consent") != "yes" or not re.fullmatch(r"[A-Za-z0-9_]{3,64}",name):
-                return self.respond(400,"Verified Steam account and explicit consent required","text/plain")
-            with LOCK, database() as conn:
-                conn.execute("UPDATE users SET steam_login=?,steam_automation=1 WHERE id=?",(name,user["id"]))
+                ok = cancel_steam_activation(user["id"],account_id)
+            else:
+                ok = request_steam_activation(
+                    user["id"],account_id,item("steam_login"),item("consent")=="yes",
+                )
+            if not ok:
+                return self.respond(400,"Steam account not found or request invalid","text/plain")
             return self.redirect("/steam-setup")
         if path == "/steam/link":
             url = steam_link_begin(user["id"])

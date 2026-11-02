@@ -142,7 +142,53 @@ class FriendsTests(unittest.TestCase):
             self.assertFalse(portal.verify_steam_openid(uid,callback))
             self.assertEqual(call.call_count,1)
         with portal.database() as conn:
-            self.assertEqual(conn.execute("SELECT steam_id FROM users WHERE id=?",(uid,)).fetchone()[0],cid.rsplit("/",1)[-1])
+            self.assertEqual(conn.execute("SELECT steam_id FROM steam_accounts WHERE user_id=?",(uid,)).fetchone()[0],cid.rsplit("/",1)[-1])
+
+    def test_two_steam_accounts_and_personal_permissions(self):
+        a=portal.create_invite()
+        b=portal.create_invite()
+        portal.register(a,"alice_demo","long-pass-for-alice")
+        portal.register(b,"other_demo","long-pass-for-other")
+        with portal.database() as db:
+            users={r["username"]:r["id"] for r in db.execute("SELECT username,id FROM users")}
+        alice=users["alice_demo"]
+        other=users["other_demo"]
+        self.assertTrue(portal.add_verified_steam_account(alice,"76561198000000001"))
+        self.assertTrue(portal.add_verified_steam_account(alice,"76561198000000002"))
+        self.assertFalse(portal.add_verified_steam_account(other,"76561198000000001"))
+        accounts=portal.steam_accounts(alice)
+        self.assertEqual(len(accounts),2)
+        account=accounts[1]["id"]
+        self.assertFalse(portal.request_steam_activation(other,account,"example_login",True))
+        self.assertTrue(portal.request_steam_activation(alice,account,"example_login",True))
+        self.assertFalse(portal.cancel_steam_activation(other,account))
+        self.assertTrue(portal.cancel_steam_activation(alice,account))
+
+    def test_old_single_account_migrates_only_once(self):
+        invite=portal.create_invite()
+        portal.register(invite,"migrated_demo","some-long-password")
+        with portal.database() as db:
+            uid=db.execute("SELECT id FROM users WHERE username='migrated_demo'").fetchone()[0]
+            db.execute("UPDATE users SET steam_id=?,steam_login=?,steam_automation=1 WHERE id=?",
+                       ("76561198000000004","login_test",uid))
+        portal.init_db()
+        portal.init_db()
+        account=portal.steam_accounts(uid)
+        self.assertEqual(len(account),1)
+        self.assertEqual(account[0]["login"],"login_test")
+        self.assertEqual(account[0]["requested"],1)
+
+    def test_steam_page_lists_each_verified_account_separately(self):
+        invite=portal.create_invite()
+        portal.register(invite,"steamviewer","long-password-viewer")
+        member=portal.get_session(portal.login("steamviewer","long-password-viewer")[0])
+        portal.add_verified_steam_account(member["id"],"76561198000000007")
+        portal.add_verified_steam_account(member["id"],"76561198000000008")
+        accounts=portal.steam_accounts(member["id"])
+        page=portal.page("Test", str([a["steam_id"] for a in accounts]))
+        self.assertIn("76561198000000007",page)
+        self.assertIn("76561198000000008",page)
+        self.assertEqual(len(accounts),2)
 
     def test_http_auth_and_csrf(self):
         server=portal.ThreadingHTTPServer(("127.0.0.1",0),portal.Handler)

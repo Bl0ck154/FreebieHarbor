@@ -33,7 +33,7 @@ class HubTests(unittest.TestCase):
         self.assertNotIn("Generate AI reply", page)
 
     def test_release_version_matches_software(self):
-        self.assertEqual(hub.APP_VERSION, "0.6.0")
+        self.assertEqual(hub.APP_VERSION, "0.7.0")
 
     def test_optional_rewards_not_configured(self):
         with patch.dict(os.environ, {"STEAMGIFTS_DB": ""}):
@@ -302,8 +302,8 @@ class HubTests(unittest.TestCase):
             serving.join(timeout=3)
 
     def test_release_version_in_dashboard_and_user_agent(self):
-        self.assertIn("FreebieHarbor v0.6.0", hub.render_page("/dashboard", {}))
-        self.assertIn("0.6.0", hub.EXTERNAL_USER_AGENT)
+        self.assertIn("FreebieHarbor v0.7.0", hub.render_page("/dashboard", {}))
+        self.assertIn("0.7.0", hub.EXTERNAL_USER_AGENT)
 
 
     def test_sanitized_asf_count_format(self):
