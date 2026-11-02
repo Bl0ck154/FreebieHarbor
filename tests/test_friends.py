@@ -4,6 +4,9 @@ import re
 import sqlite3
 import tempfile
 import threading
+from unittest.mock import patch
+from datetime import datetime,timezone
+from urllib.parse import urlsplit,parse_qs
 import unittest
 from pathlib import Path
 
@@ -100,6 +103,46 @@ class FriendsTests(unittest.TestCase):
         self.assertEqual(portal.admin_content(member_session),"")
         self.assertNotIn('href="/admin"',portal.page("Test","",member_session["username"],False))
         self.assertIn('href="/admin"',portal.page("Test","",admin_session["username"],True))
+
+    def test_link_steam_openid_rejects_bad_endpoint(self):
+        inv = portal.create_invite()
+        portal.register(inv,"another_friend","long-good-password")
+        user = portal.get_session(portal.login("another_friend","long-good-password")[0])
+        url = portal.steam_link_begin(user["id"])
+        ret = parse_qs(urlsplit(url).query)["openid.return_to"][0]
+        state = parse_qs(urlsplit(ret).query)["state"][0]
+        data = {"state":[state],"openid.mode":["id_res"],
+                "openid.op_endpoint":["https://wrong.example"],
+                "openid.return_to":[ret]}
+        with patch.object(portal,"urlopen") as request:
+            self.assertFalse(portal.verify_steam_openid(user["id"],data))
+            request.assert_not_called()
+
+    def test_verified_steam_id_is_saved_once(self):
+        inv=portal.create_invite()
+        portal.register(inv,"steamtest","long-password-for-testing")
+        uid=portal.get_session(portal.login("steamtest","long-password-for-testing")[0])["id"]
+        url=portal.steam_link_begin(uid)
+        ret=parse_qs(urlsplit(url).query)["openid.return_to"][0]
+        state=parse_qs(urlsplit(ret).query)["state"][0]
+        cid="https://steamcommunity.com/openid/id/76561198000000001"
+        nonce=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")+"uniqueval123"
+        callback={"state":[state],"openid.mode":["id_res"],
+          "openid.op_endpoint":[portal.STEAM_OPENID_ENDPOINT],
+          "openid.return_to":[ret],"openid.claimed_id":[cid],"openid.identity":[cid],
+          "openid.response_nonce":[nonce],
+          "openid.signed":["return_to,claimed_id,identity,response_nonce,op_endpoint"]}
+        class Reply:
+            status=200
+            def __enter__(self): return self
+            def __exit__(self,*args): pass
+            def read(self,n): return b"is_valid:true\n"
+        with patch.object(portal,"urlopen",return_value=Reply()) as call:
+            self.assertTrue(portal.verify_steam_openid(uid,callback))
+            self.assertFalse(portal.verify_steam_openid(uid,callback))
+            self.assertEqual(call.call_count,1)
+        with portal.database() as conn:
+            self.assertEqual(conn.execute("SELECT steam_id FROM users WHERE id=?",(uid,)).fetchone()[0],cid.rsplit("/",1)[-1])
 
     def test_http_auth_and_csrf(self):
         server=portal.ThreadingHTTPServer(("127.0.0.1",0),portal.Handler)
