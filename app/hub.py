@@ -21,6 +21,7 @@ PUBLISHER_BASE = os.environ.get("PUBLISHER_BASE", "").rstrip("/")
 POLL_SECONDS = max(300, int(os.environ.get("POLL_SECONDS", "1200")))
 PREFLIGHT_SECONDS = max(3600, int(os.environ.get("PREFLIGHT_SECONDS", "21600")))
 PORT = int(os.environ.get("PORT", "8080"))
+BIND_HOST = os.environ.get("BIND_HOST", "127.0.0.1")
 GAMERPOWER_API = "https://www.gamerpower.com/api/giveaways?platform=steam"
 FREETOKEEP_API_BASE = "https://freetokeep.gg/api/v1/offers"
 GGDEALS_FREEBIES_FEED = "https://gg.deals/news/pc/freebies/feed/"
@@ -883,6 +884,8 @@ def prune_old_reddit_posts():
 
 
 def poll_all(force_preflight=False):
+    if get_meta("demo_mode") == "1":
+        return {"ok": True, "demo": True, "message": "Demo data; external polling disabled"}
     if not _poll_lock.acquire(blocking=False):
         return {"ok": False, "message": "refresh already running"}
     try:
@@ -1152,6 +1155,17 @@ def _external_card(r, return_to):
         facts.append(f'<span class="offer-fact" title="Offer deadline">{svg_icon("clock", 15)}{html.escape(end_text)}</span>')
     facts_html = ''.join(facts)
     image = f'<img class="offer-image" src="{image_url}" alt="" loading="lazy" onerror="this.style.display=\'none\'">' if image_url else '<div class="offer-image placeholder">🎁</div>'
+    if source == "demo":
+        covers = [
+            ("linear-gradient(130deg,#1e40af,#0891b2)", "🚀"),
+            ("linear-gradient(130deg,#7c3aed,#db2777)", "✨"),
+            ("linear-gradient(130deg,#166534,#65a30d)", "🌿"),
+            ("linear-gradient(130deg,#c2410c,#f59e0b)", "🏝️"),
+            ("linear-gradient(130deg,#334155,#64748b)", "🪐"),
+            ("linear-gradient(130deg,#0f766e,#0d9488)", "🧩"),
+        ]
+        bg, symbol = covers[hashlib.sha256(str(r["title"]).encode()).digest()[0] % len(covers)]
+        image = f'<div class="offer-image placeholder" style="background:{bg};color:white;font-size:42px">{symbol}</div>'
     action_class = "auto-actions" if source == "indiegala" else "manual-actions"
     return f'''<article class="card offer-card source-{html.escape(source)} {html.escape(state)}">{image}<div class="offer-body"><div class="offer-top"><span class="badge badge-info">{html.escape(source_label)}</span><span class="badge badge-{badge_variant}">{badge_text}</span></div><h3>{html.escape(str(r["title"] or "Untitled offer"))}</h3><div class="offer-facts">{facts_html}</div>{f'<p class="offer-description">{html.escape(info)}</p>' if info else ''}<div class="offer-actions {action_class}"><a class="btn btn-ghost btn-sm action-open" href="{offer_url}" target="_blank" rel="noreferrer">Open ↗</a>{state_actions}</div></div></article>'''
 
@@ -1527,8 +1541,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     init_db()
-    t=threading.Thread(target=poll_loop,name="poller",daemon=True); t.start()
-    server=ThreadingHTTPServer(("0.0.0.0",PORT),Handler)
+    if get_meta("demo_mode") != "1":
+        t=threading.Thread(target=poll_loop,name="poller",daemon=True); t.start()
+    else:
+        print("FreebieHarbor demo preview; source polling disabled", flush=True)
+    server=ThreadingHTTPServer((BIND_HOST,PORT),Handler)
     print(f"giveaway-inbox listening on :{PORT}",flush=True)
     server.serve_forever()
 

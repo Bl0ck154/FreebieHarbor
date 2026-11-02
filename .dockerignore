@@ -8,3 +8,4 @@ docs
 *.db*
 *.cookie
 __pycache__
+demo-data
