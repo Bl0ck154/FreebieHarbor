@@ -47,3 +47,7 @@ Docs:
 - FreePackages: https://github.com/Citrinate/FreePackages
 - Steam agreement: https://store.steampowered.com/agreement/
 - Tracking: https://github.com/Bl0ck154/FreebieHarbor/issues/24
+
+## Production readiness
+
+This remains an opt-in pilot, not a verified Steam authentication or package-activation deployment. Official ASF documentation prohibits manual edits of its BotName.db storage. The temporary interactive ASF must produce its own session data, then the correct SteamID must be reverified after handoff and rollback exercised before enabling automatic claiming. An owner must explicitly consent to the shared ASF trust model. Track outstanding real-account validation in [issue #24](https://github.com/Bl0ck154/FreebieHarbor/issues/24).
