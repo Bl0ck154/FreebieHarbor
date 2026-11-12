@@ -1,0 +1,32 @@
+[Unit]
+Description=FreebieHarbor Friends local Steam QR onboarding broker
+After=docker.service
+Requires=docker.service
+ConditionPathExists=/srv/apps/freebieharbor-canary/friends/qr_broker.py
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/srv/apps/freebieharbor-canary
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=QR_FRIENDS_DB=/var/lib/docker/volumes/freebieharbor-friends_friends-data/_data/friends.db
+Environment=QR_ASF_CONFIG=/srv/state/freebieharbor-friends-asf/config
+Environment=QR_WORK_DIR=/srv/state/freebieharbor-friends-asf/qr-work
+Environment=QR_SOCKET=/run/freebieharbor-friends-qr/broker.sock
+Environment=QR_AUTH_FILE=/run/freebieharbor-friends-qr/token
+Environment=QR_SOCKET_GID=101
+ExecStart=/srv/state/freebieharbor-friends-asf/qr-venv/bin/python3 /srv/apps/freebieharbor-canary/friends/qr_broker.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/state/freebieharbor-friends-asf /run/freebieharbor-friends-qr
+MemoryMax=160M
+CPUQuota=25%
+TasksMax=64
+LimitNOFILE=512
+
+[Install]
+WantedBy=multi-user.target

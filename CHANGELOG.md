@@ -6,6 +6,17 @@ All notable public changes are documented here. Release notes on GitHub describe
 
 No unreleased changes yet.
 
+## v0.8.0 — 2026-11-02
+
+- Add optional per-account QR onboarding workflow for Friends, backed by a private authenticated Unix-socket broker; never expose Docker access or ASF IPC to the web portal.
+- Bootstrap Steam sessions using a time-limited interactive instance of *official ASF*, with its own native QR mechanism and native bot database files.
+- Only transfer the approved account's ASF-generated files to the shared Friends ASF, then attest the live SteamID. Roll back exactly on failed attestation.
+- Add independent offboarding of cancelled account sessions and retain isolation between separate Steam accounts.
+- Limit the pilot to one active QR bootstrap, a temporary 256-MiB process and a resource-capped shared ASF.
+- Include mocked end-to-end, permissions, cross-user, rollback and offboarding regression tests.
+- Actual Steam QR approval and package redemption cannot be tested without voluntary account authorization; deployment remains optional and is not represented as verified.
+
+
 ## v0.6.0 — 2026-11-02
 
 - Add official Steam OpenID identity verification for invited users; verify the assertion with Steam, validate return-to/origin, bind it to the initiating user's session, prevent nonce replay and store only SteamID64.

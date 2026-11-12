@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Optional invite-only FreebieHarbor portal. No Steam sessions or game-claim actions."""
 import hashlib
+import json
 import hmac
 import html
 import os
@@ -11,6 +12,8 @@ import threading
 import time
 from datetime import datetime, timezone
 from http import cookies
+import http.client
+import socket
 from contextlib import closing
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,12 +26,44 @@ HOST = os.getenv("FRIENDS_HOST", "127.0.0.1")
 PORT = int(os.getenv("FRIENDS_PORT", "18084"))
 PUBLIC_ORIGIN = os.getenv("FRIENDS_PUBLIC_ORIGIN", "http://127.0.0.1:18084").rstrip("/")
 COOKIE_SECURE = os.getenv("FRIENDS_COOKIE_SECURE", "true").lower() not in ("false", "0")
+QR_SOCKET = os.getenv("FRIENDS_QR_BROKER_SOCKET", "")
+QR_TOKEN_FILE = os.getenv("FRIENDS_QR_AUTH_FILE", "")
+QR_ENABLED = bool(QR_SOCKET and QR_TOKEN_FILE)
 SESSION_SECONDS = 86400 * 7
 LOCK = threading.RLock()
 FAILED_LOGINS = {}
 USERNAME_RE = re.compile(r"^[a-z][a-z0-9_.-]{2,23}$")
 MAX_STEAM_ACCOUNTS_PER_USER = 5
 MAX_STEAM_ACCOUNTS_TOTAL = 10
+
+
+class UnixBrokerConnection(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(4)
+        self.sock.connect(QR_SOCKET)
+
+
+def qr_broker_call(method, path, values=None):
+    if not QR_ENABLED:
+        raise RuntimeError("Steam QR login is not configured")
+    secret=Path(QR_TOKEN_FILE).read_text().strip()
+    if len(secret)<32:
+        raise RuntimeError("Steam QR authentication is unavailable")
+    payload=json.dumps(values).encode() if values is not None else None
+    conn=UnixBrokerConnection("localhost",timeout=5)
+    try:
+        conn.request(method,path,body=payload,headers={
+            "Authorization":secret,
+            "Content-Type":"application/json",
+        })
+        response=conn.getresponse()
+        body=response.read(150000)
+        if response.status not in (200,202):
+            raise RuntimeError("Steam QR service cannot process this request")
+        return json.loads(body)
+    finally:
+        conn.close()
 
 
 def database():
@@ -492,7 +527,7 @@ class Handler(BaseHTTPRequestHandler):
             ("X-Content-Type-Options","nosniff"),
             ("X-Frame-Options","DENY"),
             ("Referrer-Policy","no-referrer"),
-            ("Content-Security-Policy","default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"),
+            ("Content-Security-Policy","default-src 'none'; style-src 'unsafe-inline'; img-src data: 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"),
         ):
             self.send_header(key,value)
         if cookie:
@@ -586,6 +621,40 @@ class Handler(BaseHTTPRequestHandler):
             if not user["is_admin"]:
                 return self.respond(403,"Admin access required","text/plain")
             return self.respond(200,page("Admin",admin_content(user),user["username"],True))
+        if path.path == "/steam/qr":
+            if not QR_ENABLED:
+                return self.respond(404,"QR login is not configured","text/plain")
+            try:
+                account_id=int(parse_qs(path.query).get("account_id",[""])[0])
+            except ValueError:
+                return self.respond(400,"Invalid account","text/plain")
+            account=next((a for a in steam_accounts(user["id"]) if a["id"]==account_id and a["requested"]),None)
+            if account is None:
+                return self.respond(403,"Account not authorized","text/plain")
+            try:
+                status=qr_broker_call("GET","/status?"+urlencode({"user_id":user["id"],"account_id":account_id}))
+            except (OSError,RuntimeError,ValueError):
+                return self.respond(503,page("Steam QR","<h1>Steam QR is currently unavailable</h1><a href='/steam-setup'>Back to accounts</a>",user["username"]))
+            phase=status.get("phase","unknown")
+            qr=status.get("svg")
+            picture=('<img width="290" alt="Steam Mobile QR challenge" src="data:image/svg+xml;base64,'+qr+'">') if (
+                phase=="qr" and isinstance(qr,str) and len(qr)<110000 and re.fullmatch(r"[a-zA-Z0-9+/=]+",qr)
+            ) else ""
+            explanation={
+                "not_started":"No QR session has started.",
+                "starting":"Starting a temporary ASF QR session...",
+                "qr":"Open Steam Mobile, scan the QR and approve this account only.",
+                "transferring":"Steam login confirmed. Verifying the shared ASF connection...",
+                "connected":"Steam identity verified and ASF session connected.",
+                "failed":"QR login failed or expired. Try again from Steam setup.",
+            }.get(phase,"Checking Steam QR status...")
+            doc=page("Steam QR",'<h1>Steam QR onboarding</h1>'
+                '<p><b>SteamID '+html.escape(account["steam_id"])+'</b></p>'
+                '<p>'+explanation+'</p>'+picture+
+                '<p><a href="/steam-setup">Back to your Steam accounts</a></p>',user["username"],bool(user["is_admin"]))
+            if phase not in ("connected","failed"):
+                doc=doc.replace("</head>",'<meta http-equiv="refresh" content="5"></head>',1)
+            return self.respond(200,doc)
         if path.path == "/steam-setup":
             items = steam_accounts(user["id"])
             cards = []
@@ -593,6 +662,11 @@ class Handler(BaseHTTPRequestHandler):
                 state = ("Awaiting Steam/ASF login — activation NOT active" if account["requested"]
                          else "Not requested")
                 login = html.escape(account["login"] or "",quote=True)
+                qr_button=(
+                    '<form method="post" action="/steam/qr/start">'+
+                    hidden("csrf",user["csrf"])+hidden("account_id",str(account["id"]))+
+                    '<button>Authorize through Steam QR</button></form>'
+                ) if QR_ENABLED and account["requested"] else ""
                 cards.append(
                     '<section class="card"><b>SteamID '+html.escape(account["steam_id"])+'</b>'
                     '<p class="muted">'+state+'</p>'
@@ -605,7 +679,7 @@ class Handler(BaseHTTPRequestHandler):
                     '<p><button>Request connection</button></p></form>'
                     '<form method="post" action="/steam/automation">'+
                     hidden("csrf",user["csrf"])+hidden("account_id",str(account["id"]))+
-                    '<button name="action" value="disable">Cancel request</button></form>'
+                    '<button name="action" value="disable">Cancel request</button></form>'+qr_button+
                     '</section>'
                 )
             info = ('<h1>Steam accounts</h1><p class="muted">'
@@ -672,6 +746,21 @@ class Handler(BaseHTTPRequestHandler):
             return self.redirect("/login","fh_friend=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"+("; Secure" if COOKIE_SECURE else ""))
         if not hmac.compare_digest(item("csrf"),user["csrf"]):
             return self.respond(403,"Invalid CSRF token","text/plain")
+        if path == "/steam/qr/start":
+            if not QR_ENABLED:
+                return self.respond(404,"Steam QR not configured","text/plain")
+            try:
+                account_id=int(item("account_id"))
+            except ValueError:
+                return self.respond(400,"Invalid account","text/plain")
+            account=next((a for a in steam_accounts(user["id"]) if a["id"]==account_id and a["requested"]),None)
+            if account is None:
+                return self.respond(403,"Account not authorized","text/plain")
+            try:
+                qr_broker_call("POST","/start",{"user_id":user["id"],"account_id":account_id})
+            except (OSError,ValueError,RuntimeError):
+                return self.respond(503,"QR service unavailable or busy","text/plain")
+            return self.redirect("/steam/qr?"+urlencode({"account_id":account_id}))
         if path == "/steam/automation":
             try:
                 account_id = int(item("account_id"))
